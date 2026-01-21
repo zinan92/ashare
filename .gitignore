@@ -63,3 +63,4 @@ temp/
 
 # Claude
 .claude/
+.venv/

@@ -140,6 +140,46 @@ class IndustryDaily(Base):
     )
 
 
+class ConceptDaily(Base):
+    """同花顺概念板块每日数据表 - 存储热门概念的每日行情数据"""
+
+    __tablename__ = "concept_daily"
+    __table_args__ = (
+        UniqueConstraint("code", "trade_date"),
+        Index("ix_concept_trade_date", "trade_date"),
+        Index("ix_concept_code", "code"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    trade_date: Mapped[str] = mapped_column(String(8), index=True)  # 交易日期 YYYYMMDD
+    code: Mapped[str] = mapped_column(String(16), index=True)  # 概念代码
+    name: Mapped[str] = mapped_column(String(64))  # 概念名称
+
+    # 行情数据
+    close: Mapped[float] = mapped_column(Float)  # 收盘指数
+    pct_change: Mapped[float] = mapped_column(Float)  # 指数涨跌幅
+
+    # 成交量数据
+    volume: Mapped[float | None] = mapped_column(Float, nullable=True)  # 成交量
+    amount: Mapped[float | None] = mapped_column(Float, nullable=True)  # 成交额
+
+    # 龙头股信息
+    leader_symbol: Mapped[str | None] = mapped_column(String(16), nullable=True)  # 龙头股代码
+    leader_name: Mapped[str | None] = mapped_column(String(64), nullable=True)  # 龙头股名称
+    leader_pct_change: Mapped[float | None] = mapped_column(Float, nullable=True)  # 龙头股涨跌幅
+
+    # 成分股统计
+    up_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 上涨家数
+    down_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 下跌家数
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
 class Watchlist(Base):
     """用户自选股列表"""
     __tablename__ = "watchlist"

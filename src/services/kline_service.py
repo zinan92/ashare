@@ -181,7 +181,7 @@ class KlineService:
         # 转换为字典格式
         return [
             {
-                "datetime": k.datetime.isoformat() if k.datetime else None,
+                "datetime": k.trade_time,  # Return as 'datetime' for API backward compatibility
                 "open": k.open,
                 "high": k.high,
                 "low": k.low,
@@ -311,7 +311,7 @@ class KlineService:
             return None
 
         return {
-            "datetime": kline.datetime.isoformat() if kline.datetime else None,
+            "datetime": kline.trade_time,  # Return as 'datetime' for API backward compatibility
             "open": kline.open,
             "high": kline.high,
             "low": kline.low,
@@ -341,8 +341,8 @@ class KlineService:
             symbol_code, symbol_type, timeframe
         )
 
-        if kline and kline.datetime:
-            return kline.datetime.isoformat()
+        if kline and kline.trade_time:
+            return kline.trade_time
 
         return None
 

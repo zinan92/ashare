@@ -53,7 +53,7 @@ class KlineRepository(BaseRepository[Kline]):
                 Kline.symbol_type == symbol_type,
                 Kline.timeframe == timeframe,
             )
-            .order_by(desc(Kline.datetime))
+            .order_by(desc(Kline.trade_time))
             .offset(offset)
         )
 
@@ -90,10 +90,10 @@ class KlineRepository(BaseRepository[Kline]):
                 Kline.symbol_code == symbol_code,
                 Kline.symbol_type == symbol_type,
                 Kline.timeframe == timeframe,
-                Kline.datetime >= start_date,
-                Kline.datetime <= end_date,
+                Kline.trade_time >= start_date,
+                Kline.trade_time <= end_date,
             )
-            .order_by(Kline.datetime)
+            .order_by(Kline.trade_time)
         )
 
         result = self.session.execute(stmt)
@@ -123,7 +123,7 @@ class KlineRepository(BaseRepository[Kline]):
                 Kline.symbol_type == symbol_type,
                 Kline.timeframe == timeframe,
             )
-            .order_by(desc(Kline.datetime))
+            .order_by(desc(Kline.trade_time))
             .limit(1)
         )
 
@@ -156,7 +156,7 @@ class KlineRepository(BaseRepository[Kline]):
                 Kline.symbol_type == symbol_type,
                 Kline.timeframe == timeframe,
             )
-            .order_by(Kline.symbol_code, desc(Kline.datetime))
+            .order_by(Kline.symbol_code, desc(Kline.trade_time))
         )
 
         result = self.session.execute(stmt)
@@ -193,7 +193,7 @@ class KlineRepository(BaseRepository[Kline]):
                 "symbol_type": k.symbol_type,
                 "symbol_name": k.symbol_name,
                 "timeframe": k.timeframe,
-                "datetime": k.datetime,
+                "trade_time": k.trade_time,
                 "open": k.open,
                 "high": k.high,
                 "low": k.low,
@@ -208,7 +208,7 @@ class KlineRepository(BaseRepository[Kline]):
         # SQLite的upsert语法
         stmt = sqlite_insert(Kline).values(kline_dicts)
         stmt = stmt.on_conflict_do_update(
-            index_elements=["symbol_code", "symbol_type", "timeframe", "datetime"],
+            index_elements=["symbol_code", "symbol_type", "timeframe", "trade_time"],
             set_={
                 "open": stmt.excluded.open,
                 "high": stmt.excluded.high,
@@ -285,8 +285,8 @@ class KlineRepository(BaseRepository[Kline]):
                 Kline.symbol_code == symbol_code,
                 Kline.symbol_type == symbol_type,
                 Kline.timeframe == timeframe,
-                Kline.datetime >= start_date,
-                Kline.datetime <= end_date,
+                Kline.trade_time >= start_date,
+                Kline.trade_time <= end_date,
             )
         )
 
