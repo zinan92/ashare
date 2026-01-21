@@ -196,7 +196,9 @@ def _fetch_and_save_klines(
         # 保存到数据库
         kline_timeframe = KlineTimeframe.DAY if timeframe == "day" else KlineTimeframe.MINS_30
 
-        with KlineService() as service:
+        session = SessionLocal()
+        try:
+            service = KlineService.create_with_session(session)
             count = service.save_klines(
                 symbol_type=SymbolType.STOCK,
                 symbol_code=ticker,
@@ -204,6 +206,9 @@ def _fetch_and_save_klines(
                 timeframe=kline_timeframe,
                 klines=klines,
             )
+            session.commit()
+        finally:
+            session.close()
 
         logger.info(f"懒加载: {ticker} {timeframe} 保存 {count} 条数据")
         return count
@@ -250,12 +255,16 @@ def get_candles(
     response_timeframe = RESPONSE_TIMEFRAME_MAP.get(timeframe, Timeframe.DAY)
 
     # Step 1: 检查数据库中的最新数据时间
-    with KlineService() as service:
+    session = SessionLocal()
+    try:
+        service = KlineService.create_with_session(session)
         latest_time = service.get_latest_trade_time(
             symbol_type=SymbolType.STOCK,
             symbol_code=ticker_code,
             timeframe=kline_timeframe,
         )
+    finally:
+        session.close()
 
     # Step 2: 判断是否需要懒加载更新
     if _is_data_stale(latest_time, timeframe):
@@ -263,13 +272,17 @@ def get_candles(
         _fetch_and_save_klines(ticker_code, timeframe, limit=limit)
 
     # Step 3: 从数据库读取数据
-    with KlineService() as service:
+    session = SessionLocal()
+    try:
+        service = KlineService.create_with_session(session)
         klines = service.get_klines(
             symbol_type=SymbolType.STOCK,
             symbol_code=ticker_code,
             timeframe=kline_timeframe,
             limit=limit,
         )
+    finally:
+        session.close()
 
     if not klines:
         raise HTTPException(

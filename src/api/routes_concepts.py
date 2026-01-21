@@ -284,13 +284,18 @@ def get_concept_kline(
     is_daily = period == "daily"
 
     try:
-        with KlineService() as service:
+        from src.database import SessionLocal
+        session = SessionLocal()
+        try:
+            service = KlineService.create_with_session(session)
             result = service.get_klines_with_meta(
                 symbol_type=SymbolType.CONCEPT,
                 symbol_code=code,
                 timeframe=timeframe,
                 limit=limit,
             )
+        finally:
+            session.close()
 
             if not result["klines"]:
                 raise HTTPException(status_code=404, detail=f"概念 {code} K线数据不存在")

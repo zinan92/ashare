@@ -98,13 +98,18 @@ def get_index_kline(
         包含K线、成交量、MACD的数据
     """
     try:
-        with KlineService() as service:
+        from src.database import SessionLocal
+        session = SessionLocal()
+        try:
+            service = KlineService.create_with_session(session)
             result = service.get_klines_with_meta(
                 symbol_type=SymbolType.INDEX,
                 symbol_code=ts_code,
                 timeframe=KlineTimeframe.DAY,
                 limit=limit,
             )
+        finally:
+            session.close()
 
             if not result["klines"]:
                 raise HTTPException(status_code=404, detail=f"未找到指数数据: {ts_code}")
@@ -383,13 +388,18 @@ def get_index_kline_30m(
         30分钟K线数据，包含MACD指标
     """
     try:
-        with KlineService() as service:
+        from src.database import SessionLocal
+        session = SessionLocal()
+        try:
+            service = KlineService.create_with_session(session)
             result = service.get_klines_with_meta(
                 symbol_type=SymbolType.INDEX,
                 symbol_code=ts_code,
                 timeframe=KlineTimeframe.MINS_30,
                 limit=limit,
             )
+        finally:
+            session.close()
 
             if not result["klines"]:
                 raise HTTPException(status_code=404, detail=f"未找到指数30分钟K线: {ts_code}")
