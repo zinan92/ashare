@@ -778,16 +778,21 @@ class KlineUpdater:
                 if 'timestamp' in daily_df.columns:
                     daily_df = daily_df.rename(columns={'timestamp': 'datetime'})
                 daily_klines = daily_df.to_dict('records')
-                service = KlineService.create_with_session(SessionLocal())
-                count = service.save_klines(
-                    symbol_type=SymbolType.STOCK,
-                    symbol_code=ticker,
-                    symbol_name=None,
-                    timeframe=KlineTimeframe.DAY,
-                    klines=daily_klines,
-                )
-                result["daily"] = count
-                logger.info(f"{ticker} 日线更新: {count} 条")
+                session = SessionLocal()
+                try:
+                    service = KlineService.create_with_session(session)
+                    count = service.save_klines(
+                        symbol_type=SymbolType.STOCK,
+                        symbol_code=ticker,
+                        symbol_name=None,
+                        timeframe=KlineTimeframe.DAY,
+                        klines=daily_klines,
+                    )
+                    session.commit()
+                    result["daily"] = count
+                    logger.info(f"{ticker} 日线更新: {count} 条")
+                finally:
+                    session.close()
         except Exception as e:
             logger.warning(f"{ticker} 日线更新失败: {e}")
 
@@ -801,16 +806,21 @@ class KlineUpdater:
                 if 'timestamp' in mins30_df.columns:
                     mins30_df = mins30_df.rename(columns={'timestamp': 'datetime'})
                 mins30_klines = mins30_df.to_dict('records')
-                service = KlineService.create_with_session(SessionLocal())
-                count = service.save_klines(
-                    symbol_type=SymbolType.STOCK,
-                    symbol_code=ticker,
-                    symbol_name=None,
-                    timeframe=KlineTimeframe.MINS_30,
-                    klines=mins30_klines,
-                )
-                result["mins30"] = count
-                logger.info(f"{ticker} 30分钟更新: {count} 条")
+                session = SessionLocal()
+                try:
+                    service = KlineService.create_with_session(session)
+                    count = service.save_klines(
+                        symbol_type=SymbolType.STOCK,
+                        symbol_code=ticker,
+                        symbol_name=None,
+                        timeframe=KlineTimeframe.MINS_30,
+                        klines=mins30_klines,
+                    )
+                    session.commit()
+                    result["mins30"] = count
+                    logger.info(f"{ticker} 30分钟更新: {count} 条")
+                finally:
+                    session.close()
         except Exception as e:
             logger.warning(f"{ticker} 30分钟更新失败: {e}")
 
