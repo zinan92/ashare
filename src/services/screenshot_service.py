@@ -4,8 +4,8 @@ K线截图生成服务
 
 重构说明:
 - 使用 Repository 模式替代 SessionLocal()
-- 支持依赖注入用于测试
-- 向后兼容：无参数调用时自动创建 session
+- 强制依赖注入，不再自动创建 Session
+- Session 生命周期由调用者控制
 """
 
 import os
@@ -20,7 +20,6 @@ import matplotlib.pyplot as plt
 import matplotlib
 from sqlalchemy.orm import Session
 
-from src.database import SessionLocal
 from src.repositories.kline_repository import KlineRepository
 from src.repositories.symbol_repository import SymbolRepository
 
@@ -41,8 +40,8 @@ class ScreenshotService:
     K线截图生成服务
 
     重构后支持:
-    - 依赖注入 Session（用于测试）
-    - 向后兼容：无参数调用时自动创建 session
+    - 强制依赖注入 KlineRepository 和 SymbolRepository
+    - Session 生命周期由调用者控制
     """
 
     # 深色主题样式
@@ -79,56 +78,30 @@ class ScreenshotService:
 
     def __init__(
         self,
-        session: Optional[Session] = None,
-        kline_repo: Optional[KlineRepository] = None,
-        symbol_repo: Optional[SymbolRepository] = None,
+        kline_repo: KlineRepository,
+        symbol_repo: SymbolRepository,
         output_base_dir: str = "data/screenshots"
     ):
         """
         初始化截图服务
 
         Args:
-            session: 数据库会话（可选，用于依赖注入）
-            kline_repo: K线数据仓库（可选）
-            symbol_repo: 标的数据仓库（可选）
+            kline_repo: K线数据仓库（必需）
+            symbol_repo: 标的数据仓库（必需）
             output_base_dir: 截图输出基础目录
         """
+        self.kline_repo = kline_repo
+        self.symbol_repo = symbol_repo
+        self.session = kline_repo.session
         self.output_base_dir = Path(output_base_dir)
         self.style = mpf.make_mpf_style(**self.CHART_STYLE)
-
-        # 支持三种初始化方式：
-        # 1. 注入 repositories（最推荐，用于测试）
-        # 2. 注入 session（次推荐）
-        # 3. 自动创建 session（向后兼容）
-        if kline_repo and symbol_repo:
-            self.kline_repo = kline_repo
-            self.symbol_repo = symbol_repo
-            self.session = kline_repo.session
-            self._owns_session = False
-        elif session:
-            self.session = session
-            self.kline_repo = KlineRepository(session)
-            self.symbol_repo = SymbolRepository(session)
-            self._owns_session = False
-        else:
-            self.session = SessionLocal()
-            self.kline_repo = KlineRepository(self.session)
-            self.symbol_repo = SymbolRepository(self.session)
-            self._owns_session = True
 
     @classmethod
     def create_with_session(cls, session: Session, output_base_dir: str = "data/screenshots") -> "ScreenshotService":
         """使用现有session创建服务的工厂方法"""
-        return cls(session=session, output_base_dir=output_base_dir)
-
-    def __del__(self):
-        """确保session在对象销毁时关闭"""
-        if (
-            hasattr(self, "_owns_session")
-            and self._owns_session
-            and hasattr(self, "session")
-        ):
-            self.session.close()
+        kline_repo = KlineRepository(session)
+        symbol_repo = SymbolRepository(session)
+        return cls(kline_repo=kline_repo, symbol_repo=symbol_repo, output_base_dir=output_base_dir)
 
     def _ensure_output_dir(self, date_str: Optional[str] = None) -> Path:
         """确保输出目录存在"""

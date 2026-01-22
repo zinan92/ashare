@@ -4,8 +4,8 @@
 
 重构说明:
 - 使用 KlineRepository 替代 session_scope()
-- 支持依赖注入用于测试
-- 向后兼容：无参数调用时自动创建 repository
+- 强制依赖注入，不再自动创建 Session
+- Session 生命周期由调用者控制
 """
 import logging
 from datetime import datetime, time
@@ -14,7 +14,6 @@ from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from src.models import Kline, KlineTimeframe, SymbolType
-from src.database import SessionLocal
 from src.repositories.kline_repository import KlineRepository
 from src.services.kline_updater import KlineUpdater
 
@@ -26,13 +25,13 @@ class DataConsistencyValidator:
     数据一致性验证器
 
     重构后支持:
-    - 依赖注入 KlineRepository（用于测试）
-    - 向后兼容：无参数调用时自动创建 repository
+    - 强制依赖注入 KlineRepository
+    - Session 生命周期由调用者控制
     """
 
     def __init__(
         self,
-        kline_repo: Optional[KlineRepository] = None,
+        kline_repo: KlineRepository,
         updater: Optional[KlineUpdater] = None,
         tolerance: float = 0.01
     ):
@@ -40,25 +39,13 @@ class DataConsistencyValidator:
         初始化验证器
 
         Args:
-            kline_repo: K线数据仓库（可选，用于依赖注入）
+            kline_repo: K线数据仓库（必需）
             updater: KlineUpdater实例（可选）
             tolerance: 价格差异容忍度（百分比），默认0.01%
         """
-        self.tolerance = tolerance
-
-        # 支持两种初始化方式：
-        # 1. 注入现有的 repository（推荐，用于测试）
-        # 2. 自动创建 repository（向后兼容）
-        if kline_repo:
-            self.kline_repo = kline_repo
-            self._owns_session = False
-        else:
-            self._session = SessionLocal()
-            self.kline_repo = KlineRepository(self._session)
-            self._owns_session = True
-
-        # updater 是可选的，用于实时价格验证
+        self.kline_repo = kline_repo
         self.updater = updater
+        self.tolerance = tolerance
 
     @classmethod
     def create_with_session(cls, session: Session, tolerance: float = 0.01) -> "DataConsistencyValidator":
@@ -72,15 +59,6 @@ class DataConsistencyValidator:
         kline_repo = KlineRepository(session)
         updater = KlineUpdater.create_with_session(session)
         return cls(kline_repo=kline_repo, updater=updater, tolerance=tolerance)
-
-    def __del__(self):
-        """确保session在对象销毁时关闭"""
-        if (
-            hasattr(self, "_owns_session")
-            and self._owns_session
-            and hasattr(self, "_session")
-        ):
-            self._session.close()
 
     async def validate_all(self) -> Dict[str, Any]:
         """

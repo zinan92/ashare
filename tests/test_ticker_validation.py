@@ -57,4 +57,5 @@ def test_ticker_validation_error_message():
     error_detail = response.json()["detail"][0]
     assert error_detail["type"] == "string_pattern_mismatch"
     assert error_detail["loc"] == ["path", "ticker"]
-    assert "^[0-9]{6}$" in error_detail["ctx"]["pattern"]
+    # Check that the pattern requires 6 digits (with optional market suffix)
+    assert "^[0-9]{6}" in error_detail["ctx"]["pattern"]

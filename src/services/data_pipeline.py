@@ -8,7 +8,6 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from src.config import Settings, get_settings
-from src.database import SessionLocal
 from src.repositories.symbol_repository import SymbolRepository
 from src.schemas import SymbolMeta
 from src.services.tushare_data_provider import TushareDataProvider
@@ -22,8 +21,8 @@ class MarketDataService:
 
     重构说明:
     - 使用 SymbolRepository 替代直接的 SQLAlchemy 查询
-    - 支持依赖注入用于测试
-    - 向后兼容：无参数调用时自动创建 repository
+    - 强制使用依赖注入，不再自动创建 Session
+    - Session 生命周期由调用者控制
     """
 
     # 类级别缓存，用于交易日期缓存
@@ -33,7 +32,7 @@ class MarketDataService:
 
     def __init__(
         self,
-        symbol_repo: Optional[SymbolRepository] = None,
+        symbol_repo: SymbolRepository,
         provider: TushareDataProvider | None = None,
         settings: Settings | None = None,
     ) -> None:
@@ -41,24 +40,14 @@ class MarketDataService:
         初始化市场数据服务
 
         Args:
-            symbol_repo: 标的数据仓库（可选，用于依赖注入）
+            symbol_repo: 标的数据仓库（必需）
             provider: Tushare数据提供者（可选）
             settings: 配置对象（可选）
         """
+        self.symbol_repo = symbol_repo
         self.provider = provider or TushareDataProvider()
         self.settings = settings or get_settings()
         self._super_category_map = self._load_super_category_map()
-
-        # 支持两种初始化方式：
-        # 1. 注入现有的 repository（推荐，用于测试）
-        # 2. 自动创建 repository（向后兼容）
-        if symbol_repo:
-            self.symbol_repo = symbol_repo
-            self._owns_session = False
-        else:
-            self._session = SessionLocal()
-            self.symbol_repo = SymbolRepository(self._session)
-            self._owns_session = True
 
     @classmethod
     def create_with_session(
@@ -67,15 +56,6 @@ class MarketDataService:
         """使用现有session创建服务的工厂方法"""
         symbol_repo = SymbolRepository(session)
         return cls(symbol_repo=symbol_repo, settings=settings)
-
-    def __del__(self):
-        """确保session在对象销毁时关闭"""
-        if (
-            hasattr(self, "_owns_session")
-            and self._owns_session
-            and hasattr(self, "_session")
-        ):
-            self._session.close()
 
     def _get_latest_trade_date_cached(self) -> Optional[str]:
         """获取最新交易日期（带缓存，5分钟TTL）"""

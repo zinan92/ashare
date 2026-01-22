@@ -4,8 +4,8 @@ Tushare Board Service
 
 重构说明:
 - 使用 BoardMappingRepository 替代直接的 SQLAlchemy 查询
-- 支持依赖注入用于测试
-- 向后兼容：无参数调用时自动创建 repository
+- 强制使用依赖注入，不再自动创建 Session
+- Session 生命周期由调用者控制
 """
 
 import logging
@@ -15,7 +15,6 @@ from typing import List, Dict, Optional
 from sqlalchemy.orm import Session
 
 from src.config import Settings, get_settings
-from src.database import SessionLocal
 from src.repositories.board_mapping_repository import BoardMappingRepository
 from src.services.tushare_client import TushareClient
 from src.utils.ticker_utils import TickerNormalizer
@@ -33,22 +32,23 @@ class TushareBoardService:
     - 管理板块-成分股映射关系
 
     重构后支持:
-    - 依赖注入 BoardMappingRepository（用于测试）
-    - 向后兼容：无参数调用时自动创建 repository
+    - 强制依赖注入 BoardMappingRepository
+    - Session 生命周期由调用者控制
     """
 
     def __init__(
         self,
-        board_repo: Optional[BoardMappingRepository] = None,
+        board_repo: BoardMappingRepository,
         settings: Settings | None = None,
     ):
         """
         初始化板块服务
 
         Args:
-            board_repo: 板块映射数据仓库（可选，用于依赖注入）
+            board_repo: 板块映射数据仓库（必需）
             settings: 应用配置
         """
+        self.board_repo = board_repo
         self.settings = settings or get_settings()
 
         # 初始化 Tushare 客户端
@@ -59,17 +59,6 @@ class TushareBoardService:
             max_retries=self.settings.tushare_max_retries
         )
 
-        # 支持两种初始化方式：
-        # 1. 注入现有的 repository（推荐，用于测试）
-        # 2. 自动创建 repository（向后兼容）
-        if board_repo:
-            self.board_repo = board_repo
-            self._owns_session = False
-        else:
-            self._session = SessionLocal()
-            self.board_repo = BoardMappingRepository(self._session)
-            self._owns_session = True
-
         logger.info("TushareBoardService 已初始化")
 
     @classmethod
@@ -77,11 +66,6 @@ class TushareBoardService:
         """使用现有session创建服务的工厂方法"""
         board_repo = BoardMappingRepository(session)
         return cls(board_repo=board_repo, settings=settings)
-
-    def __del__(self):
-        """确保session在对象销毁时关闭"""
-        if hasattr(self, '_owns_session') and self._owns_session and hasattr(self, '_session'):
-            self._session.close()
 
     def sync_concept_boards(self) -> int:
         """

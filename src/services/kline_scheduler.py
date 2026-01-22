@@ -4,8 +4,8 @@ K线数据定时调度器
 
 重构说明:
 - 使用 Repository 模式替代 SessionLocal()
-- 支持依赖注入用于测试
-- 向后兼容：无参数调用时自动创建 session
+- 强制依赖注入，不再自动创建 Session
+- Session 生命周期由调用者控制
 """
 
 import asyncio
@@ -16,7 +16,6 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy.orm import Session
 
-from src.database import SessionLocal
 from src.models import TradeCalendar
 from src.services.kline_updater import KlineUpdater
 from src.services.data_consistency_validator import DataConsistencyValidator
@@ -30,28 +29,19 @@ class KlineScheduler:
     K线数据定时调度器
 
     重构后支持:
-    - 依赖注入 Session（用于测试）
-    - 向后兼容：无参数调用时自动创建 session
+    - 强制依赖注入 Session
+    - Session 生命周期由调用者控制
     """
 
-    def __init__(self, session: Optional[Session] = None):
+    def __init__(self, session: Session):
         """
         初始化调度器
 
         Args:
-            session: 数据库会话（可选，用于依赖注入）
+            session: 数据库会话（必需）
         """
+        self.session = session
         self.scheduler = AsyncIOScheduler()
-
-        # 支持两种初始化方式：
-        # 1. 注入现有的 session（推荐，用于测试）
-        # 2. 自动创建 session（向后兼容）
-        if session:
-            self.session = session
-            self._owns_session = False
-        else:
-            self.session = SessionLocal()
-            self._owns_session = True
 
         # 使用工厂方法创建服务
         self.updater = KlineUpdater.create_with_session(self.session)
@@ -62,15 +52,6 @@ class KlineScheduler:
     def create_with_session(cls, session: Session) -> "KlineScheduler":
         """使用现有session创建调度器的工厂方法"""
         return cls(session=session)
-
-    def __del__(self):
-        """确保session在对象销毁时关闭"""
-        if (
-            hasattr(self, "_owns_session")
-            and self._owns_session
-            and hasattr(self, "session")
-        ):
-            self.session.close()
 
     def is_trading_day(self, date: datetime = None) -> bool:
         """

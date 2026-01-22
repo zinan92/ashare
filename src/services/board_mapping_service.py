@@ -1,9 +1,9 @@
 """板块映射服务 - 负责构建和更新股票与板块的映射关系
 
 重构说明:
-- 支持依赖注入 BoardMappingRepository 和 SymbolRepository
-- 移除 session_scope() 上下文管理器，使用 repository 模式
-- 保持向后兼容：无参数调用时自动创建 repositories
+- 强制依赖注入 BoardMappingRepository 和 SymbolRepository
+- Session 生命周期由调用者控制
+- 不再自动创建 Session
 """
 
 from __future__ import annotations
@@ -21,7 +21,6 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from src.config import get_settings, Settings
-from src.database import SessionLocal, session_scope
 from src.models import BoardMapping, SymbolMetadata
 from src.repositories.board_mapping_repository import BoardMappingRepository
 from src.repositories.symbol_repository import SymbolRepository
@@ -42,24 +41,26 @@ class BoardMappingService:
     5. 断点续跑：跳过已成功的板块，从失败处继续
 
     重构后支持:
-    - 依赖注入 BoardMappingRepository 和 SymbolRepository（用于测试）
-    - 向后兼容：无参数调用时自动创建 repositories
+    - 强制依赖注入 BoardMappingRepository 和 SymbolRepository
+    - Session 生命周期由调用者控制
     """
 
     def __init__(
         self,
-        board_repo: Optional[BoardMappingRepository] = None,
-        symbol_repo: Optional[SymbolRepository] = None,
+        board_repo: BoardMappingRepository,
+        symbol_repo: SymbolRepository,
         settings: Settings | None = None,
     ):
         """
         初始化板块映射服务
 
         Args:
-            board_repo: 板块映射数据仓库（可选，用于依赖注入）
-            symbol_repo: 标的数据仓库（可选，用于依赖注入）
+            board_repo: 板块映射数据仓库（必需）
+            symbol_repo: 标的数据仓库（必需）
             settings: 配置对象（可选）
         """
+        self.board_repo = board_repo
+        self.symbol_repo = symbol_repo
         self.settings = settings or get_settings()
         self.rate_limit_delay = 10   # 同花顺接口 15000积分足够，但仍保留轻微延迟
         self.random_jitter = 5
@@ -72,19 +73,6 @@ class BoardMappingService:
             max_retries=self.settings.tushare_max_retries,
         )
 
-        # 支持两种初始化方式：
-        # 1. 注入现有的 repositories（推荐，用于测试）
-        # 2. 自动创建 repositories（向后兼容）
-        if board_repo and symbol_repo:
-            self.board_repo = board_repo
-            self.symbol_repo = symbol_repo
-            self._owns_session = False
-        else:
-            self._session = SessionLocal()
-            self.board_repo = BoardMappingRepository(self._session)
-            self.symbol_repo = SymbolRepository(self._session)
-            self._owns_session = True
-
         self._industry_boards_cache: Optional[pd.DataFrame] = None
         self._concept_boards_cache: Optional[pd.DataFrame] = None
         self._super_category_map = self._load_super_category_map()
@@ -95,11 +83,6 @@ class BoardMappingService:
         board_repo = BoardMappingRepository(session)
         symbol_repo = SymbolRepository(session)
         return cls(board_repo=board_repo, symbol_repo=symbol_repo, settings=settings)
-
-    def __del__(self):
-        """确保session在对象销毁时关闭"""
-        if hasattr(self, '_owns_session') and self._owns_session and hasattr(self, '_session'):
-            self._session.close()
 
     # ----------------------------------------------------------------- #
     # 公共API
