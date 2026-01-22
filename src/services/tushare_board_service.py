@@ -3,7 +3,7 @@ Tushare Board Service
 板块数据服务 - 同步同花顺概念板块
 
 重构说明:
-- 使用 BoardRepository 替代直接的 SQLAlchemy 查询
+- 使用 BoardMappingRepository 替代直接的 SQLAlchemy 查询
 - 支持依赖注入用于测试
 - 向后兼容：无参数调用时自动创建 repository
 """
@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from src.config import Settings, get_settings
 from src.database import SessionLocal
-from src.repositories.board_repository import BoardRepository
+from src.repositories.board_mapping_repository import BoardMappingRepository
 from src.services.tushare_client import TushareClient
 from src.utils.ticker_utils import TickerNormalizer
 
@@ -33,20 +33,20 @@ class TushareBoardService:
     - 管理板块-成分股映射关系
 
     重构后支持:
-    - 依赖注入 BoardRepository（用于测试）
+    - 依赖注入 BoardMappingRepository（用于测试）
     - 向后兼容：无参数调用时自动创建 repository
     """
 
     def __init__(
         self,
-        board_repo: Optional[BoardRepository] = None,
+        board_repo: Optional[BoardMappingRepository] = None,
         settings: Settings | None = None,
     ):
         """
         初始化板块服务
 
         Args:
-            board_repo: 板块数据仓库（可选，用于依赖注入）
+            board_repo: 板块映射数据仓库（可选，用于依赖注入）
             settings: 应用配置
         """
         self.settings = settings or get_settings()
@@ -67,7 +67,7 @@ class TushareBoardService:
             self._owns_session = False
         else:
             self._session = SessionLocal()
-            self.board_repo = BoardRepository(self._session)
+            self.board_repo = BoardMappingRepository(self._session)
             self._owns_session = True
 
         logger.info("TushareBoardService 已初始化")
@@ -75,7 +75,7 @@ class TushareBoardService:
     @classmethod
     def create_with_session(cls, session: Session, settings: Settings | None = None) -> "TushareBoardService":
         """使用现有session创建服务的工厂方法"""
-        board_repo = BoardRepository(session)
+        board_repo = BoardMappingRepository(session)
         return cls(board_repo=board_repo, settings=settings)
 
     def __del__(self):
@@ -168,7 +168,7 @@ class TushareBoardService:
                     last_updated=datetime.now(timezone.utc)
                 )
 
-                self.board_repo.upsert_board_mapping(board_mapping)
+                self.board_repo.upsert(board_mapping)
                 synced_count += 1
 
                 logger.debug(
@@ -198,7 +198,7 @@ class TushareBoardService:
         ticker = TickerNormalizer.normalize(ticker)
 
         # 使用 repository 查询所有概念板块
-        boards = self.board_repo.find_boards_by_type('concept')
+        boards = self.board_repo.find_by_type('concept')
 
         concepts = []
         for board in boards:
@@ -226,7 +226,7 @@ class TushareBoardService:
                 ]
         """
         # 使用 repository 查询
-        boards = self.board_repo.find_boards_by_type('industry')
+        boards = self.board_repo.find_by_type('industry')
 
         result = []
         for board in boards:
@@ -250,7 +250,7 @@ class TushareBoardService:
             List[Dict]: 概念板块信息列表
         """
         # 使用 repository 查询
-        boards = self.board_repo.find_boards_by_type('concept')
+        boards = self.board_repo.find_by_type('concept')
 
         result = []
         for board in boards:
@@ -282,7 +282,7 @@ class TushareBoardService:
             List[str]: 股票代码列表（6位）
         """
         # 使用 repository 查询
-        board = self.board_repo.find_board_by_name_and_type(board_name, board_type)
+        board = self.board_repo.find_by_name_and_type(board_name, board_type)
 
         if not board:
             logger.warning(

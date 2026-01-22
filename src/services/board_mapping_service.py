@@ -1,7 +1,7 @@
 """板块映射服务 - 负责构建和更新股票与板块的映射关系
 
 重构说明:
-- 支持依赖注入 BoardRepository 和 SymbolRepository
+- 支持依赖注入 BoardMappingRepository 和 SymbolRepository
 - 移除 session_scope() 上下文管理器，使用 repository 模式
 - 保持向后兼容：无参数调用时自动创建 repositories
 """
@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 from src.config import get_settings, Settings
 from src.database import SessionLocal, session_scope
 from src.models import BoardMapping, SymbolMetadata
-from src.repositories.board_repository import BoardRepository
+from src.repositories.board_mapping_repository import BoardMappingRepository
 from src.repositories.symbol_repository import SymbolRepository
 from src.services.tushare_client import TushareClient
 from src.utils.logging import LOGGER
@@ -42,13 +42,13 @@ class BoardMappingService:
     5. 断点续跑：跳过已成功的板块，从失败处继续
 
     重构后支持:
-    - 依赖注入 BoardRepository 和 SymbolRepository（用于测试）
+    - 依赖注入 BoardMappingRepository 和 SymbolRepository（用于测试）
     - 向后兼容：无参数调用时自动创建 repositories
     """
 
     def __init__(
         self,
-        board_repo: Optional[BoardRepository] = None,
+        board_repo: Optional[BoardMappingRepository] = None,
         symbol_repo: Optional[SymbolRepository] = None,
         settings: Settings | None = None,
     ):
@@ -56,7 +56,7 @@ class BoardMappingService:
         初始化板块映射服务
 
         Args:
-            board_repo: 板块数据仓库（可选，用于依赖注入）
+            board_repo: 板块映射数据仓库（可选，用于依赖注入）
             symbol_repo: 标的数据仓库（可选，用于依赖注入）
             settings: 配置对象（可选）
         """
@@ -81,7 +81,7 @@ class BoardMappingService:
             self._owns_session = False
         else:
             self._session = SessionLocal()
-            self.board_repo = BoardRepository(self._session)
+            self.board_repo = BoardMappingRepository(self._session)
             self.symbol_repo = SymbolRepository(self._session)
             self._owns_session = True
 
@@ -92,7 +92,7 @@ class BoardMappingService:
     @classmethod
     def create_with_session(cls, session: Session, settings: Settings | None = None) -> "BoardMappingService":
         """使用现有session创建服务的工厂方法"""
-        board_repo = BoardRepository(session)
+        board_repo = BoardMappingRepository(session)
         symbol_repo = SymbolRepository(session)
         return cls(board_repo=board_repo, symbol_repo=symbol_repo, settings=settings)
 
@@ -151,7 +151,7 @@ class BoardMappingService:
         """
         # 使用 repository 获取当前数据库中的成分股
         board_code: Optional[str] = None
-        mapping = self.board_repo.find_board_by_name_and_type(board_name, board_type)
+        mapping = self.board_repo.find_by_name_and_type(board_name, board_type)
         if mapping:
             old_constituents = set(mapping.constituents)
             board_code = mapping.board_code
@@ -221,7 +221,7 @@ class BoardMappingService:
         LOGGER.info(f"Found {total_boards} industry boards")
 
         # 获取已成功构建的板块（断点续跑）
-        completed_boards = self.board_repo.find_boards_by_type('industry')
+        completed_boards = self.board_repo.find_by_type('industry')
         completed_board_names = {
             board.board_name for board in completed_boards if board.constituents
         }
@@ -264,7 +264,7 @@ class BoardMappingService:
                     board_code=board_code,
                     constituents=constituents,
                 )
-                self.board_repo.upsert_board_mapping(mapping)
+                self.board_repo.upsert(mapping)
 
                 count += 1
                 LOGGER.info(f"[{idx}/{total_boards}] ✓ Saved '{board_name}': {len(constituents)} stocks")
@@ -304,7 +304,7 @@ class BoardMappingService:
                     board_code=board_code,
                     constituents=constituents,
                 )
-                self.board_repo.upsert_board_mapping(mapping)
+                self.board_repo.upsert(mapping)
 
                 count += 1
                 LOGGER.info(f"[{count}/{len(boards_df)}] Saved concept '{board_name}': {len(constituents)} stocks")
@@ -344,7 +344,7 @@ class BoardMappingService:
         ticker_to_concepts = defaultdict(list)
 
         # 使用 repository 获取所有概念板块
-        concept_mappings = self.board_repo.find_boards_by_type('concept')
+        concept_mappings = self.board_repo.find_by_type('concept')
 
         for mapping in concept_mappings:
             for ticker in mapping.constituents:
