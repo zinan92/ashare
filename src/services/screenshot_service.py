@@ -1,6 +1,11 @@
 """
 K线截图生成服务
 使用 mplfinance 生成K线图片，供 Claude Code 进行形态分析
+
+重构说明:
+- 使用 Repository 模式替代 SessionLocal()
+- 支持依赖注入用于测试
+- 向后兼容：无参数调用时自动创建 session
 """
 
 import os
@@ -13,8 +18,11 @@ import pandas as pd
 import mplfinance as mpf
 import matplotlib.pyplot as plt
 import matplotlib
+from sqlalchemy.orm import Session
 
 from src.database import SessionLocal
+from src.repositories.kline_repository import KlineRepository
+from src.repositories.symbol_repository import SymbolRepository
 
 # 设置中文字体
 matplotlib.rcParams['font.sans-serif'] = ['PingFang SC', 'Heiti SC', 'STHeiti', 'SimHei', 'Arial Unicode MS']
@@ -29,7 +37,13 @@ plt.switch_backend('Agg')
 
 
 class ScreenshotService:
-    """K线截图生成服务"""
+    """
+    K线截图生成服务
+
+    重构后支持:
+    - 依赖注入 Session（用于测试）
+    - 向后兼容：无参数调用时自动创建 session
+    """
 
     # 深色主题样式
     CHART_STYLE = {
@@ -63,15 +77,58 @@ class ScreenshotService:
     # 均线颜色
     MA_COLORS = ["#f39c12", "#3498db", "#9b59b6", "#1abc9c"]  # MA5/10/20/60
 
-    def __init__(self, output_base_dir: str = "data/screenshots"):
+    def __init__(
+        self,
+        session: Optional[Session] = None,
+        kline_repo: Optional[KlineRepository] = None,
+        symbol_repo: Optional[SymbolRepository] = None,
+        output_base_dir: str = "data/screenshots"
+    ):
         """
         初始化截图服务
 
         Args:
+            session: 数据库会话（可选，用于依赖注入）
+            kline_repo: K线数据仓库（可选）
+            symbol_repo: 标的数据仓库（可选）
             output_base_dir: 截图输出基础目录
         """
         self.output_base_dir = Path(output_base_dir)
         self.style = mpf.make_mpf_style(**self.CHART_STYLE)
+
+        # 支持三种初始化方式：
+        # 1. 注入 repositories（最推荐，用于测试）
+        # 2. 注入 session（次推荐）
+        # 3. 自动创建 session（向后兼容）
+        if kline_repo and symbol_repo:
+            self.kline_repo = kline_repo
+            self.symbol_repo = symbol_repo
+            self.session = kline_repo.session
+            self._owns_session = False
+        elif session:
+            self.session = session
+            self.kline_repo = KlineRepository(session)
+            self.symbol_repo = SymbolRepository(session)
+            self._owns_session = False
+        else:
+            self.session = SessionLocal()
+            self.kline_repo = KlineRepository(self.session)
+            self.symbol_repo = SymbolRepository(self.session)
+            self._owns_session = True
+
+    @classmethod
+    def create_with_session(cls, session: Session, output_base_dir: str = "data/screenshots") -> "ScreenshotService":
+        """使用现有session创建服务的工厂方法"""
+        return cls(session=session, output_base_dir=output_base_dir)
+
+    def __del__(self):
+        """确保session在对象销毁时关闭"""
+        if (
+            hasattr(self, "_owns_session")
+            and self._owns_session
+            and hasattr(self, "session")
+        ):
+            self.session.close()
 
     def _ensure_output_dir(self, date_str: Optional[str] = None) -> Path:
         """确保输出目录存在"""
@@ -84,17 +141,14 @@ class ScreenshotService:
 
     def _get_watchlist_tickers(self) -> List[tuple]:
         """获取自选股列表 (ticker, name)"""
-        session = SessionLocal()
-        try:
-            results = (
-                session.query(Watchlist.ticker, SymbolMetadata.name)
-                .join(SymbolMetadata, Watchlist.ticker == SymbolMetadata.ticker)
-                .order_by(Watchlist.added_at.desc())
-                .all()
-            )
-            return [(r[0], r[1] or r[0]) for r in results]
-        finally:
-            session.close()
+        # 使用实例的 session
+        results = (
+            self.session.query(Watchlist.ticker, SymbolMetadata.name)
+            .join(SymbolMetadata, Watchlist.ticker == SymbolMetadata.ticker)
+            .order_by(Watchlist.added_at.desc())
+            .all()
+        )
+        return [(r[0], r[1] or r[0]) for r in results]
 
     def _get_kline_data(
         self,
@@ -113,28 +167,23 @@ class ScreenshotService:
         Returns:
             DataFrame with DatetimeIndex and OHLCV columns
         """
-        session = SessionLocal()
-        try:
-            # 映射 timeframe
-            tf_map = {
-                "day": KlineTimeframe.DAY,
-                "30m": KlineTimeframe.MINS_30,
-                "5m": KlineTimeframe.MINS_5,
-                "1m": KlineTimeframe.MINS_1,
-            }
-            kline_tf = tf_map.get(timeframe, KlineTimeframe.DAY)
+        # 映射 timeframe
+        tf_map = {
+            "day": KlineTimeframe.DAY,
+            "30m": KlineTimeframe.MINS_30,
+            "5m": KlineTimeframe.MINS_5,
+            "1m": KlineTimeframe.MINS_1,
+        }
+        kline_tf = tf_map.get(timeframe, KlineTimeframe.DAY)
 
-            # 查询K线数据
-            klines = (
-                session.query(Kline)
-                .filter(
-                    Kline.symbol_code == ticker,
-                    Kline.symbol_type == SymbolType.STOCK,
-                    Kline.timeframe == kline_tf,
-                )
-                .order_by(Kline.trade_time.desc())
-                .limit(limit)
-                .all()
+        try:
+            # 使用 repository 查询K线数据
+            klines = self.kline_repo.find_by_symbol_and_timeframe(
+                symbol_code=ticker,
+                symbol_type=SymbolType.STOCK,
+                timeframe=kline_tf,
+                limit=limit,
+                order_desc=True
             )
 
             if not klines:
@@ -176,8 +225,6 @@ class ScreenshotService:
         except Exception as e:
             logger.error(f"{ticker} 获取K线数据失败: {e}")
             return None
-        finally:
-            session.close()
 
     def generate_chart(
         self,
@@ -317,16 +364,12 @@ class ScreenshotService:
         if scope == "watchlist":
             stock_list = self._get_watchlist_tickers()
         elif tickers:
-            # 查询股票名称
-            session = SessionLocal()
-            try:
-                stock_list = []
-                for t in tickers:
-                    meta = session.query(SymbolMetadata).filter(SymbolMetadata.ticker == t).first()
-                    name = meta.name if meta else t
-                    stock_list.append((t, name))
-            finally:
-                session.close()
+            # 使用 repository 查询股票名称
+            stock_list = []
+            for t in tickers:
+                meta = self.symbol_repo.find_by_ticker(t)
+                name = meta.name if meta else t
+                stock_list.append((t, name))
         else:
             return {
                 "success": False,
