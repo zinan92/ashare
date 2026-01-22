@@ -1,34 +1,67 @@
 """
 数据一致性验证服务
 在收盘后验证：实时价格、日线收盘价、30分钟收盘价是否一致
+
+重构说明:
+- 使用 KlineRepository 替代 session_scope()
+- 支持依赖注入用于测试
+- 向后兼容：无参数调用时自动创建 repository
 """
 import logging
 from datetime import datetime, time
 from typing import List, Dict, Any, Optional
 from sqlalchemy import desc
+from sqlalchemy.orm import Session
+
 from src.models import Kline, KlineTimeframe, SymbolType
-from src.database import session_scope
+from src.database import SessionLocal
+from src.repositories.kline_repository import KlineRepository
 from src.services.kline_updater import KlineUpdater
 
 logger = logging.getLogger(__name__)
 
 
 class DataConsistencyValidator:
-    """数据一致性验证器"""
+    """
+    数据一致性验证器
 
-    def __init__(self, updater: KlineUpdater, tolerance: float = 0.01):
+    重构后支持:
+    - 依赖注入 KlineRepository（用于测试）
+    - 向后兼容：无参数调用时自动创建 repository
+    """
+
+    def __init__(
+        self,
+        kline_repo: Optional[KlineRepository] = None,
+        updater: Optional[KlineUpdater] = None,
+        tolerance: float = 0.01
+    ):
         """
         初始化验证器
 
         Args:
-            updater: KlineUpdater实例
+            kline_repo: K线数据仓库（可选，用于依赖注入）
+            updater: KlineUpdater实例（可选）
             tolerance: 价格差异容忍度（百分比），默认0.01%
         """
         self.tolerance = tolerance
+
+        # 支持两种初始化方式：
+        # 1. 注入现有的 repository（推荐，用于测试）
+        # 2. 自动创建 repository（向后兼容）
+        if kline_repo:
+            self.kline_repo = kline_repo
+            self._owns_session = False
+        else:
+            self._session = SessionLocal()
+            self.kline_repo = KlineRepository(self._session)
+            self._owns_session = True
+
+        # updater 是可选的，用于实时价格验证
         self.updater = updater
 
     @classmethod
-    def create_with_session(cls, session, tolerance: float = 0.01) -> "DataConsistencyValidator":
+    def create_with_session(cls, session: Session, tolerance: float = 0.01) -> "DataConsistencyValidator":
         """
         工厂方法：使用session创建DataConsistencyValidator
 
@@ -36,8 +69,18 @@ class DataConsistencyValidator:
             session: SQLAlchemy session
             tolerance: 价格差异容忍度（百分比），默认0.01%
         """
+        kline_repo = KlineRepository(session)
         updater = KlineUpdater.create_with_session(session)
-        return cls(updater, tolerance)
+        return cls(kline_repo=kline_repo, updater=updater, tolerance=tolerance)
+
+    def __del__(self):
+        """确保session在对象销毁时关闭"""
+        if (
+            hasattr(self, "_owns_session")
+            and self._owns_session
+            and hasattr(self, "_session")
+        ):
+            self._session.close()
 
     async def validate_all(self) -> Dict[str, Any]:
         """
@@ -98,25 +141,27 @@ class DataConsistencyValidator:
         items = []
         inconsistencies = []
 
-        with session_scope() as session:
-            # 获取所有有数据的指数
-            indexes = (
-                session.query(Kline.symbol_code, Kline.symbol_name)
-                .filter(
-                    Kline.symbol_type == SymbolType.INDEX,
-                    Kline.timeframe == KlineTimeframe.DAY
-                )
-                .distinct()
-                .all()
-            )
+        # 使用 repository 获取所有指数的去重列表
+        from sqlalchemy import select
 
-            for symbol_code, symbol_name in indexes:
-                result = await self._validate_symbol(
-                    session, symbol_code, symbol_name, SymbolType.INDEX
-                )
-                items.append(result)
-                if not result["is_consistent"]:
-                    inconsistencies.append(result)
+        stmt = (
+            select(Kline.symbol_code, Kline.symbol_name)
+            .filter(
+                Kline.symbol_type == SymbolType.INDEX,
+                Kline.timeframe == KlineTimeframe.DAY
+            )
+            .distinct()
+        )
+        result_set = self.kline_repo.session.execute(stmt)
+        indexes = result_set.all()
+
+        for symbol_code, symbol_name in indexes:
+            result = await self._validate_symbol(
+                symbol_code, symbol_name, SymbolType.INDEX
+            )
+            items.append(result)
+            if not result["is_consistent"]:
+                inconsistencies.append(result)
 
         logger.info(f"指数验证完成：{len(items)}个，{len(inconsistencies)}个不一致")
         return {"items": items, "inconsistencies": inconsistencies}
@@ -128,31 +173,33 @@ class DataConsistencyValidator:
         items = []
         inconsistencies = []
 
-        with session_scope() as session:
-            # 获取所有有数据的概念
-            concepts = (
-                session.query(Kline.symbol_code, Kline.symbol_name)
-                .filter(
-                    Kline.symbol_type == SymbolType.CONCEPT,
-                    Kline.timeframe == KlineTimeframe.DAY
-                )
-                .distinct()
-                .all()
-            )
+        # 使用 repository 获取所有概念的去重列表
+        from sqlalchemy import select
 
-            for symbol_code, symbol_name in concepts:
-                result = await self._validate_symbol(
-                    session, symbol_code, symbol_name, SymbolType.CONCEPT
-                )
-                items.append(result)
-                if not result["is_consistent"]:
-                    inconsistencies.append(result)
+        stmt = (
+            select(Kline.symbol_code, Kline.symbol_name)
+            .filter(
+                Kline.symbol_type == SymbolType.CONCEPT,
+                Kline.timeframe == KlineTimeframe.DAY
+            )
+            .distinct()
+        )
+        result_set = self.kline_repo.session.execute(stmt)
+        concepts = result_set.all()
+
+        for symbol_code, symbol_name in concepts:
+            result = await self._validate_symbol(
+                symbol_code, symbol_name, SymbolType.CONCEPT
+            )
+            items.append(result)
+            if not result["is_consistent"]:
+                inconsistencies.append(result)
 
         logger.info(f"概念验证完成：{len(items)}个，{len(inconsistencies)}个不一致")
         return {"items": items, "inconsistencies": inconsistencies}
 
     async def _validate_symbol(
-        self, session, symbol_code: str, symbol_name: str, symbol_type: SymbolType
+        self, symbol_code: str, symbol_name: str, symbol_type: SymbolType
     ) -> Dict[str, Any]:
         """
         验证单个标的的数据一致性
@@ -178,16 +225,19 @@ class DataConsistencyValidator:
 
         try:
             # 1. 获取日线最后收盘价
-            daily_kline = (
-                session.query(Kline)
+            from sqlalchemy import select
+
+            stmt = (
+                select(Kline)
                 .filter(
                     Kline.symbol_code == symbol_code,
                     Kline.symbol_type == symbol_type,
                     Kline.timeframe == KlineTimeframe.DAY
                 )
                 .order_by(desc(Kline.trade_time))
-                .first()
+                .limit(1)
             )
+            daily_kline = self.kline_repo.session.execute(stmt).scalar_one_or_none()
 
             if daily_kline:
                 result["daily_close"] = float(daily_kline.close)
@@ -203,16 +253,17 @@ class DataConsistencyValidator:
                 return result
 
             # 2. 获取30分钟最后收盘价
-            mins30_kline = (
-                session.query(Kline)
+            stmt = (
+                select(Kline)
                 .filter(
                     Kline.symbol_code == symbol_code,
                     Kline.symbol_type == symbol_type,
                     Kline.timeframe == KlineTimeframe.MINS_30
                 )
                 .order_by(desc(Kline.trade_time))
-                .first()
+                .limit(1)
             )
+            mins30_kline = self.kline_repo.session.execute(stmt).scalar_one_or_none()
 
             if mins30_kline:
                 result["mins30_close"] = float(mins30_kline.close)
