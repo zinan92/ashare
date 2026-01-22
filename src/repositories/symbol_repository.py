@@ -321,3 +321,120 @@ class SymbolRepository(BaseRepository[SymbolMetadata]):
             "total": total_count,
             # 可以添加更多统计信息
         }
+
+    def find_all_ordered_by_market_value(self) -> List[SymbolMetadata]:
+        """
+        获取所有标的，按市值倒序、ticker正序排列
+
+        Returns:
+            标的元数据列表
+        """
+        stmt = select(SymbolMetadata).order_by(
+            SymbolMetadata.total_mv.desc(),
+            SymbolMetadata.ticker.asc(),
+        )
+        result = self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    def get_last_sync_time(self) -> Optional[any]:
+        """
+        获取最后同步时间
+
+        Returns:
+            最后同步时间或None
+        """
+        from sqlalchemy import func
+
+        stmt = select(func.max(SymbolMetadata.last_sync))
+        result = self.session.execute(stmt)
+        return result.scalar()
+
+    def bulk_upsert_from_dataframe(
+        self, dataframe, super_category_map: dict[str, str]
+    ) -> None:
+        """
+        从 DataFrame 批量插入或更新标的元数据
+        优化版：使用分块查询和批量操作
+
+        Args:
+            dataframe: pandas DataFrame 包含标的数据
+            super_category_map: 行业到超级行业组的映射
+        """
+        from datetime import datetime, timezone
+
+        if dataframe is None or dataframe.empty:
+            logger.warning("Metadata dataframe empty; skipping persist.")
+            return
+
+        logger.info(f"Persist metadata | rows={len(dataframe)}")
+
+        # OPTIMIZATION: Pre-load all existing tickers (chunk to avoid SQLite 999-param limit)
+        tickers_in_df = dataframe["ticker"].tolist()
+        existing_records = {}
+
+        CHUNK_SIZE = 500
+        for i in range(0, len(tickers_in_df), CHUNK_SIZE):
+            ticker_chunk = tickers_in_df[i : i + CHUNK_SIZE]
+            chunk_stmt = select(SymbolMetadata).where(
+                SymbolMetadata.ticker.in_(ticker_chunk)
+            )
+            for rec in self.session.scalars(chunk_stmt).all():
+                existing_records[rec.ticker] = rec
+
+        logger.debug(f"Found {len(existing_records)} existing records")
+
+        # Split into inserts and updates
+        insert_rows = []
+        update_rows = []
+
+        for row in dataframe.itertuples(index=False):
+            if row.ticker in existing_records:
+                update_rows.append(row)
+            else:
+                insert_rows.append(row)
+
+        # OPTIMIZATION: Bulk insert new records
+        if insert_rows:
+            insert_records = []
+            for row in insert_rows:
+                insert_records.append(
+                    {
+                        "ticker": row.ticker,
+                        "name": row.name,
+                        "total_mv": getattr(row, "total_mv", None),
+                        "circ_mv": getattr(row, "circ_mv", None),
+                        "pe_ttm": getattr(row, "pe_ttm", None),
+                        "pb": getattr(row, "pb", None),
+                        "list_date": getattr(row, "list_date", None),
+                        "industry_lv1": getattr(row, "industry_lv1", None),
+                        "industry_lv2": getattr(row, "industry_lv2", None),
+                        "industry_lv3": getattr(row, "industry_lv3", None),
+                        "super_category": super_category_map.get(
+                            getattr(row, "industry_lv1", None)
+                        ),
+                        "concepts": getattr(row, "concepts", []),
+                        "last_sync": getattr(
+                            row, "last_sync", datetime.now(timezone.utc)
+                        ),
+                    }
+                )
+            self.session.bulk_insert_mappings(SymbolMetadata, insert_records)
+            logger.debug(f"Bulk inserted {len(insert_records)} new records")
+
+        # Update existing records
+        if update_rows:
+            for row in update_rows:
+                instance = existing_records[row.ticker]
+                instance.name = row.name
+                instance.total_mv = getattr(row, "total_mv", None)
+                instance.circ_mv = getattr(row, "circ_mv", None)
+                instance.pe_ttm = getattr(row, "pe_ttm", None)
+                instance.pb = getattr(row, "pb", None)
+                instance.list_date = getattr(row, "list_date", None)
+                # 注意: 不再覆盖 industry_lv1/lv2/lv3
+                # 这些字段由 update_industry_daily.py 从同花顺成分股关系写入
+                instance.concepts = getattr(row, "concepts", [])
+                instance.last_sync = getattr(
+                    row, "last_sync", datetime.now(timezone.utc)
+                )
+            logger.debug(f"Updated {len(update_rows)} existing records")

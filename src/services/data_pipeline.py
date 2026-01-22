@@ -5,11 +5,11 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
 
-from sqlalchemy import select, func
+from sqlalchemy.orm import Session
 
 from src.config import Settings, get_settings
-from src.database import session_scope
-from src.models import SymbolMetadata
+from src.database import SessionLocal
+from src.repositories.symbol_repository import SymbolRepository
 from src.schemas import SymbolMeta
 from src.services.tushare_data_provider import TushareDataProvider
 from src.utils.logging import LOGGER
@@ -17,7 +17,14 @@ from src.utils.ticker_utils import TickerNormalizer
 
 
 class MarketDataService:
-    """Coordinates external data fetching and database persistence for metadata."""
+    """
+    市场数据服务 - 协调外部数据获取和数据库持久化
+
+    重构说明:
+    - 使用 SymbolRepository 替代直接的 SQLAlchemy 查询
+    - 支持依赖注入用于测试
+    - 向后兼容：无参数调用时自动创建 repository
+    """
 
     # 类级别缓存，用于交易日期缓存
     _trade_date_cache: Optional[str] = None
@@ -26,12 +33,49 @@ class MarketDataService:
 
     def __init__(
         self,
+        symbol_repo: Optional[SymbolRepository] = None,
         provider: TushareDataProvider | None = None,
         settings: Settings | None = None,
     ) -> None:
+        """
+        初始化市场数据服务
+
+        Args:
+            symbol_repo: 标的数据仓库（可选，用于依赖注入）
+            provider: Tushare数据提供者（可选）
+            settings: 配置对象（可选）
+        """
         self.provider = provider or TushareDataProvider()
         self.settings = settings or get_settings()
         self._super_category_map = self._load_super_category_map()
+
+        # 支持两种初始化方式：
+        # 1. 注入现有的 repository（推荐，用于测试）
+        # 2. 自动创建 repository（向后兼容）
+        if symbol_repo:
+            self.symbol_repo = symbol_repo
+            self._owns_session = False
+        else:
+            self._session = SessionLocal()
+            self.symbol_repo = SymbolRepository(self._session)
+            self._owns_session = True
+
+    @classmethod
+    def create_with_session(
+        cls, session: Session, settings: Settings | None = None
+    ) -> "MarketDataService":
+        """使用现有session创建服务的工厂方法"""
+        symbol_repo = SymbolRepository(session)
+        return cls(symbol_repo=symbol_repo, settings=settings)
+
+    def __del__(self):
+        """确保session在对象销毁时关闭"""
+        if (
+            hasattr(self, "_owns_session")
+            and self._owns_session
+            and hasattr(self, "_session")
+        ):
+            self._session.close()
 
     def _get_latest_trade_date_cached(self) -> Optional[str]:
         """获取最新交易日期（带缓存，5分钟TTL）"""
@@ -94,93 +138,20 @@ class MarketDataService:
             metadata_df = None
 
         if metadata_df is not None:
-            with session_scope() as session:
-                self._persist_metadata(session, metadata_df)
+            # 使用 repository 的批量更新方法
+            self.symbol_repo.bulk_upsert_from_dataframe(
+                metadata_df, self._super_category_map
+            )
+            self.symbol_repo.session.commit()
 
     def list_symbols(self) -> list[SymbolMeta]:
-        stmt = select(SymbolMetadata).order_by(
-            SymbolMetadata.total_mv.desc(),
-            SymbolMetadata.ticker.asc(),
-        )
-        with session_scope() as session:
-            result = session.scalars(stmt).all()
-        return [SymbolMeta.model_validate(row) for row in result]
+        """获取所有标的列表"""
+        # 使用 repository 查询
+        symbols = self.symbol_repo.find_all_ordered_by_market_value()
+        return [SymbolMeta.model_validate(row) for row in symbols]
 
     def last_refresh_time(self) -> datetime | None:
-        stmt = select(func.max(SymbolMetadata.last_sync))
-        with session_scope() as session:
-            value = session.execute(stmt).scalar()
-        return value
+        """获取最后刷新时间"""
+        # 使用 repository 查询
+        return self.symbol_repo.get_last_sync_time()
 
-    # --------------------------------------------------------------------- #
-    # Internal helpers
-    # --------------------------------------------------------------------- #
-    def _persist_metadata(self, session, dataframe) -> None:
-        if dataframe is None or dataframe.empty:
-            LOGGER.warning("Metadata dataframe empty; skipping persist.")
-            return
-
-        LOGGER.info("Persist metadata | rows=%s", len(dataframe))
-
-        # OPTIMIZATION: Pre-load all existing tickers (chunk to avoid SQLite 999-param limit)
-        tickers_in_df = dataframe['ticker'].tolist()
-        existing_records = {}
-
-        CHUNK_SIZE = 500
-        for i in range(0, len(tickers_in_df), CHUNK_SIZE):
-            ticker_chunk = tickers_in_df[i:i + CHUNK_SIZE]
-            chunk_stmt = select(SymbolMetadata).where(
-                SymbolMetadata.ticker.in_(ticker_chunk)
-            )
-            for rec in session.scalars(chunk_stmt).all():
-                existing_records[rec.ticker] = rec
-
-        LOGGER.debug("Found %d existing records", len(existing_records))
-
-        # Split into inserts and updates
-        insert_rows = []
-        update_rows = []
-
-        for row in dataframe.itertuples(index=False):
-            if row.ticker in existing_records:
-                update_rows.append(row)
-            else:
-                insert_rows.append(row)
-
-        # OPTIMIZATION: Bulk insert new records
-        if insert_rows:
-            insert_records = []
-            for row in insert_rows:
-                insert_records.append({
-                    'ticker': row.ticker,
-                    'name': row.name,
-                    'total_mv': getattr(row, "total_mv", None),
-                    'circ_mv': getattr(row, "circ_mv", None),
-                    'pe_ttm': getattr(row, "pe_ttm", None),
-                    'pb': getattr(row, "pb", None),
-                    'list_date': getattr(row, "list_date", None),
-                    'industry_lv1': getattr(row, "industry_lv1", None),
-                    'industry_lv2': getattr(row, "industry_lv2", None),
-                    'industry_lv3': getattr(row, "industry_lv3", None),
-                    'super_category': self._super_category_map.get(getattr(row, "industry_lv1", None)),
-                    'concepts': getattr(row, "concepts", []),
-                    'last_sync': getattr(row, "last_sync", datetime.now(timezone.utc))
-                })
-            session.bulk_insert_mappings(SymbolMetadata, insert_records)
-            LOGGER.debug("Bulk inserted %d new records", len(insert_records))
-
-        # Update existing records
-        if update_rows:
-            for row in update_rows:
-                instance = existing_records[row.ticker]
-                instance.name = row.name
-                instance.total_mv = getattr(row, "total_mv", None)
-                instance.circ_mv = getattr(row, "circ_mv", None)
-                instance.pe_ttm = getattr(row, "pe_ttm", None)
-                instance.pb = getattr(row, "pb", None)
-                instance.list_date = getattr(row, "list_date", None)
-                # 注意: 不再覆盖 industry_lv1/lv2/lv3
-                # 这些字段由 update_industry_daily.py 从同花顺成分股关系写入
-                instance.concepts = getattr(row, "concepts", [])
-                instance.last_sync = getattr(row, "last_sync", datetime.now(timezone.utc))
-            LOGGER.debug("Updated %d existing records", len(update_rows))
