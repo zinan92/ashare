@@ -69,24 +69,37 @@ class KlineUpdater:
 
     def __init__(
         self,
-        kline_repo: Optional[KlineRepository] = None,
-        symbol_repo: Optional[SymbolRepository] = None,
+        kline_repo: KlineRepository,
+        symbol_repo: SymbolRepository,
     ):
         """
         初始化K线更新器
 
         Args:
-            kline_repo: K线数据仓库（可选，用于依赖注入/测试）
-            symbol_repo: 标的数据仓库（可选，用于依赖注入/测试）
+            kline_repo: K线数据仓库（必需）
+            symbol_repo: 标的数据仓库（必需）
 
-        注意: 如果不提供 repositories，方法内部会自动创建 SessionLocal()
+        注意: 请使用 create_with_session() 工厂方法创建实例
         """
         self.settings = get_settings()
         self._tushare_client: Optional[TushareClient] = None
-
-        # 可选的 repository 注入（用于测试）
         self.kline_repo = kline_repo
         self.symbol_repo = symbol_repo
+
+    @classmethod
+    def create_with_session(cls, session: Session) -> "KlineUpdater":
+        """
+        使用现有session创建KlineUpdater实例（工厂方法）
+
+        Args:
+            session: SQLAlchemy session
+
+        Returns:
+            KlineUpdater实例
+        """
+        kline_repo = KlineRepository(session)
+        symbol_repo = SymbolRepository(session)
+        return cls(kline_repo, symbol_repo)
 
     @property
     def tushare_client(self) -> TushareClient:
@@ -117,8 +130,8 @@ class KlineUpdater:
             started_at=now,
             completed_at=now if status == DataUpdateStatus.COMPLETED else None,
         )
-        session.add(log)
-        session.commit()
+        self.kline_repo.session.add(log)
+        self.kline_repo.session.commit()
 
     # ==================== 指数更新 ====================
 
@@ -127,7 +140,6 @@ class KlineUpdater:
         logger.info("开始更新指数日线数据...")
         total_updated = 0
 
-        session = SessionLocal()
         try:
             async def fetch_daily(ts_code: str, name: str) -> list[dict]:
                 """异步获取日线K线"""
@@ -178,29 +190,27 @@ class KlineUpdater:
 
             for (ts_code, name), klines in zip(INDEX_LIST, results):
                 if klines:
-                    service = KlineService.create_with_session(session)
+                    service = KlineService(self.kline_repo, self.symbol_repo)
                     count = service.save_klines(
-                    symbol_type=SymbolType.INDEX,
-                    symbol_code=ts_code,
-                    symbol_name=name,
-                    timeframe=KlineTimeframe.DAY,
-                    klines=klines,
+                        symbol_type=SymbolType.INDEX,
+                        symbol_code=ts_code,
+                        symbol_name=name,
+                        timeframe=KlineTimeframe.DAY,
+                        klines=klines,
                     )
                     total_updated += count
                     logger.info(f"  {name}: {count} 条")
 
             self._log_update(
-                session, "index_daily", DataUpdateStatus.COMPLETED, total_updated
+                self.kline_repo.session, "index_daily", DataUpdateStatus.COMPLETED, total_updated
             )
             logger.info(f"指数日线更新完成，共 {total_updated} 条")
 
         except Exception as e:
             logger.exception("指数日线更新失败")
             self._log_update(
-                session, "index_daily", DataUpdateStatus.FAILED, error_message=str(e)
+                self.kline_repo.session, "index_daily", DataUpdateStatus.FAILED, error_message=str(e)
             )
-        finally:
-            session.close()
 
         return total_updated
 
@@ -208,8 +218,6 @@ class KlineUpdater:
         """更新指数30分钟数据 (Sina API)"""
         logger.info("开始更新指数30分钟数据...")
         total_updated = 0
-
-        session = SessionLocal()
         try:
             async def fetch_30m(ts_code: str, name: str) -> list[dict]:
                 """异步获取30分钟K线"""
@@ -259,7 +267,7 @@ class KlineUpdater:
 
             for (ts_code, name), klines in zip(INDEX_LIST, results):
                 if klines:
-                    service = KlineService.create_with_session(session)
+                    service = KlineService(self.kline_repo, self.symbol_repo)
                     count = service.save_klines(
                         symbol_type=SymbolType.INDEX,
                         symbol_code=ts_code,
@@ -280,8 +288,6 @@ class KlineUpdater:
             self._log_update(
                 session, "index_30m", DataUpdateStatus.FAILED, error_message=str(e)
             )
-        finally:
-            session.close()
 
         return total_updated
 
@@ -397,8 +403,6 @@ class KlineUpdater:
         if not concepts:
             logger.warning("未找到热门概念列表")
             return 0
-
-        session = SessionLocal()
         try:
             # 批量获取数据
             async def fetch_one(code: str, expected_name: str):
@@ -414,7 +418,7 @@ class KlineUpdater:
 
                 for code, name, klines in results:
                     if klines:
-                        service = KlineService.create_with_session(session)
+                        service = KlineService(self.kline_repo, self.symbol_repo)
                         count = service.save_klines(
                             symbol_type=SymbolType.CONCEPT,
                             symbol_code=code,
@@ -437,8 +441,6 @@ class KlineUpdater:
             self._log_update(
                 session, "concept_daily", DataUpdateStatus.FAILED, error_message=str(e)
             )
-        finally:
-            session.close()
 
         return total_updated
 
@@ -451,8 +453,6 @@ class KlineUpdater:
         if not concepts:
             logger.warning("未找到热门概念列表")
             return 0
-
-        session = SessionLocal()
         try:
             async def fetch_one(code: str, expected_name: str):
                 name, klines = await self._fetch_ths_kline(code, "30")
@@ -466,7 +466,7 @@ class KlineUpdater:
 
                 for code, name, klines in results:
                     if klines:
-                        service = KlineService.create_with_session(session)
+                        service = KlineService(self.kline_repo, self.symbol_repo)
                         count = service.save_klines(
                             symbol_type=SymbolType.CONCEPT,
                             symbol_code=code,
@@ -488,8 +488,6 @@ class KlineUpdater:
             self._log_update(
                 session, "concept_30m", DataUpdateStatus.FAILED, error_message=str(e)
             )
-        finally:
-            session.close()
 
         return total_updated
 
@@ -501,12 +499,8 @@ class KlineUpdater:
 
         # 如果注入了 symbol_repo，优先使用（但 Watchlist 不在 SymbolRepository 中）
         # 这里保持原有逻辑，未来可以添加 WatchlistRepository
-        session = SessionLocal()
-        try:
-            tickers = session.query(Watchlist.ticker).all()
-            return [t[0] for t in tickers]
-        finally:
-            session.close()
+        tickers = self.kline_repo.session.query(Watchlist.ticker).all()
+        return [t[0] for t in tickers]
 
     async def update_stock_daily(self) -> int:
         """
@@ -523,10 +517,8 @@ class KlineUpdater:
             return 0
 
         logger.info(f"共 {len(tickers)} 只自选股需要更新")
-
-        session = SessionLocal()
         provider = EastMoneyKlineProvider(delay=0.1)
-        kline_service = KlineService.create_with_session(session)
+        kline_service = KlineService(self.kline_repo, self.symbol_repo)
 
         try:
             for ticker in tickers:
@@ -574,8 +566,6 @@ class KlineUpdater:
             self._log_update(
                 session, "stock_daily", DataUpdateStatus.FAILED, error_message=str(e)
             )
-        finally:
-            session.close()
 
         return total_updated
 
@@ -594,10 +584,8 @@ class KlineUpdater:
             return 0
 
         logger.info(f"共 {len(tickers)} 只自选股需要更新")
-
-        session = SessionLocal()
         provider = SinaKlineProvider(delay=0.5)
-        kline_service = KlineService.create_with_session(session)
+        kline_service = KlineService(self.kline_repo, self.symbol_repo)
 
         try:
             for ticker in tickers:
@@ -645,8 +633,6 @@ class KlineUpdater:
             self._log_update(
                 session, "stock_30m", DataUpdateStatus.FAILED, error_message=str(e)
             )
-        finally:
-            session.close()
 
         return total_updated
 
@@ -665,15 +651,13 @@ class KlineUpdater:
         total_updated = 0
         success_count = 0
         fail_count = 0
-
-        session = SessionLocal()
         provider = EastMoneyKlineProvider(delay=0.1)
-        kline_service = KlineService.create_with_session(session)
+        kline_service = KlineService(self.kline_repo, self.symbol_repo)
 
         try:
             # 获取所有股票代码
             from src.models import SymbolMetadata
-            all_tickers = session.query(SymbolMetadata.ticker).all()
+            all_tickers = self.kline_repo.session.query(SymbolMetadata.ticker).all()
             tickers = [t[0] for t in all_tickers]
             total = len(tickers)
 
@@ -744,8 +728,6 @@ class KlineUpdater:
             self._log_update(
                 session, "all_stock_daily", DataUpdateStatus.FAILED, error_message=str(e)
             )
-        finally:
-            session.close()
 
         return total_updated
 
@@ -778,21 +760,18 @@ class KlineUpdater:
                 if 'timestamp' in daily_df.columns:
                     daily_df = daily_df.rename(columns={'timestamp': 'datetime'})
                 daily_klines = daily_df.to_dict('records')
-                session = SessionLocal()
-                try:
-                    service = KlineService.create_with_session(session)
-                    count = service.save_klines(
-                        symbol_type=SymbolType.STOCK,
-                        symbol_code=ticker,
-                        symbol_name=None,
-                        timeframe=KlineTimeframe.DAY,
-                        klines=daily_klines,
-                    )
-                    session.commit()
-                    result["daily"] = count
-                    logger.info(f"{ticker} 日线更新: {count} 条")
-                finally:
-                    session.close()
+                service = KlineService(self.kline_repo, self.symbol_repo)
+                count = service.save_klines(
+                    symbol_type=SymbolType.STOCK,
+                    symbol_code=ticker,
+                    symbol_name=None,
+                    timeframe=KlineTimeframe.DAY,
+                    klines=daily_klines,
+                )
+                self.kline_repo.session.commit()
+                result["daily"] = count
+                logger.info(f"{ticker} 日线更新: {count} 条")
+
         except Exception as e:
             logger.warning(f"{ticker} 日线更新失败: {e}")
 
@@ -806,21 +785,18 @@ class KlineUpdater:
                 if 'timestamp' in mins30_df.columns:
                     mins30_df = mins30_df.rename(columns={'timestamp': 'datetime'})
                 mins30_klines = mins30_df.to_dict('records')
-                session = SessionLocal()
-                try:
-                    service = KlineService.create_with_session(session)
-                    count = service.save_klines(
-                        symbol_type=SymbolType.STOCK,
-                        symbol_code=ticker,
-                        symbol_name=None,
-                        timeframe=KlineTimeframe.MINS_30,
-                        klines=mins30_klines,
-                    )
-                    session.commit()
-                    result["mins30"] = count
-                    logger.info(f"{ticker} 30分钟更新: {count} 条")
-                finally:
-                    session.close()
+                service = KlineService(self.kline_repo, self.symbol_repo)
+                count = service.save_klines(
+                    symbol_type=SymbolType.STOCK,
+                    symbol_code=ticker,
+                    symbol_name=None,
+                    timeframe=KlineTimeframe.MINS_30,
+                    klines=mins30_klines,
+                )
+                self.kline_repo.session.commit()
+                result["mins30"] = count
+                logger.info(f"{ticker} 30分钟更新: {count} 条")
+
         except Exception as e:
             logger.warning(f"{ticker} 30分钟更新失败: {e}")
 
@@ -832,8 +808,6 @@ class KlineUpdater:
     def update_trade_calendar(self) -> int:
         """更新交易日历 (Tushare)"""
         logger.info("更新交易日历...")
-
-        session = SessionLocal()
         try:
             # 获取今年和明年的交易日历
             current_year = datetime.now().year
@@ -856,19 +830,19 @@ class KlineUpdater:
 
                 # Upsert
                 existing = (
-                    session.query(TradeCalendar)
+                    self.kline_repo.session.query(TradeCalendar)
                     .filter(TradeCalendar.date == trade_date)
                     .first()
                 )
                 if existing:
                     existing.is_trading_day = is_open
                 else:
-                    session.add(
+                    self.kline_repo.session.add(
                         TradeCalendar(date=trade_date, is_trading_day=is_open)
                     )
                 count += 1
 
-            session.commit()
+            self.kline_repo.session.commit()
             self._log_update(
                 session, "trade_calendar", DataUpdateStatus.COMPLETED, count
             )
@@ -884,8 +858,6 @@ class KlineUpdater:
                 error_message=str(e),
             )
             return 0
-        finally:
-            session.close()
 
     # ==================== 数据清理 ====================
 
@@ -903,13 +875,11 @@ class KlineUpdater:
         total_deleted = 0
 
         cutoff_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
-
-        session = SessionLocal()
         try:
             # 清理30分钟线 (只保留90天)
             mins_cutoff = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
             deleted = (
-                session.query(Kline)
+                self.kline_repo.session.query(Kline)
                 .filter(
                     Kline.timeframe == KlineTimeframe.MINS_30,
                     Kline.trade_time < mins_cutoff,
@@ -921,7 +891,7 @@ class KlineUpdater:
 
             # 清理日线 (保留1年)
             deleted = (
-                session.query(Kline)
+                self.kline_repo.session.query(Kline)
                 .filter(
                     Kline.timeframe == KlineTimeframe.DAY,
                     Kline.trade_time < cutoff_date,
@@ -931,7 +901,7 @@ class KlineUpdater:
             total_deleted += deleted
             logger.info(f"  日线: 删除 {deleted} 条")
 
-            session.commit()
+            self.kline_repo.session.commit()
             self._log_update(
                 session, "cleanup", DataUpdateStatus.COMPLETED, total_deleted
             )
@@ -940,8 +910,6 @@ class KlineUpdater:
         except Exception as e:
             logger.exception("数据清理失败")
             session.rollback()
-        finally:
-            session.close()
 
         return total_deleted
 
