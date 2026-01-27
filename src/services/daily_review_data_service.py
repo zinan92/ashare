@@ -20,6 +20,7 @@ from src.repositories.concept_daily_repository import ConceptDailyRepository
 from src.repositories.symbol_repository import SymbolRepository
 from src.utils.kline_analyzer import KlinePatternAnalyzer
 from src.utils.market_sentiment_analyzer import MarketSentimentAnalyzer
+from src.utils.fundamental_analyzer import FundamentalAnalyzer
 from src.utils.indicators import calculate_ma
 from src.schemas.daily_review import (
     DailyReviewSnapshot,
@@ -62,6 +63,7 @@ class DailyReviewDataService:
         self.symbol_repo = SymbolRepository(session)
         self.pattern_analyzer = KlinePatternAnalyzer()
         self.sentiment_analyzer = MarketSentimentAnalyzer()
+        self.fundamental_analyzer = FundamentalAnalyzer(session)
 
     async def collect_review_data(self, trade_date: str) -> DailyReviewSnapshot:
         """
@@ -99,13 +101,17 @@ class DailyReviewDataService:
         # 5. Representative sample stocks
         samples = await self._select_sample_stocks(trade_date, sectors, concepts)
 
+        # 6. Fundamental analysis
+        fundamental_analysis = await self._analyze_fundamentals(trade_date, samples)
+
         return DailyReviewSnapshot(
             trade_date=trade_date,
             indices=indices,
             sectors=sectors,
             concepts=concepts,
             sentiment=sentiment,
-            sample_stocks=samples
+            sample_stocks=samples,
+            fundamental_analysis=fundamental_analysis
         )
 
     async def _collect_index_data(self, trade_date: str) -> List[IndexSnapshot]:
@@ -736,3 +742,62 @@ class DailyReviewDataService:
             ma10_break=stock_data['ma10_break'],
             ma_position=stock_data['ma_position']
         )
+
+    async def _analyze_fundamentals(
+        self,
+        trade_date: str,
+        sample_stocks: Dict[str, List[SampleStock]]
+    ) -> Optional[Dict]:
+        """
+        Analyze fundamentals for sample stocks.
+
+        Args:
+            trade_date: Trading date in YYYYMMDD format
+            sample_stocks: Dictionary mapping sector names to sample stocks
+
+        Returns:
+            Fundamental analysis results including:
+            - divergence_alerts: Stocks with price-fundamental divergence
+            - quality_stocks: Stocks with strong fundamentals (top 20% in industry)
+            - risk_stocks: Stocks with poor fundamentals but rising prices
+        """
+        all_stocks_for_analysis = []
+
+        # Prepare stock data for batch analysis
+        for sector_name, stocks in sample_stocks.items():
+            for stock in stocks:
+                # Get symbol metadata for industry info
+                symbol_info = self.session.query(SymbolMetadata).filter(
+                    SymbolMetadata.ticker == stock.ticker
+                ).first()
+
+                all_stocks_for_analysis.append({
+                    'ticker': stock.ticker,
+                    'name': stock.name,
+                    'sector': sector_name,
+                    'industry': symbol_info.industry_lv1 if symbol_info else None,
+                    'current_price': stock.close,
+                    'change_pct': stock.change_pct
+                })
+
+        if not all_stocks_for_analysis:
+            return None
+
+        # Perform batch fundamental analysis
+        try:
+            results = self.fundamental_analyzer.batch_analyze_fundamentals(
+                all_stocks_for_analysis,
+                trade_date
+            )
+
+            return {
+                "divergence_alerts": results.get('divergence_alerts', []),
+                "quality_stocks": results.get('quality_stocks', []),
+                "risk_stocks": results.get('risk_stocks', [])
+            }
+
+        except Exception as e:
+            print(f"基本面分析失败: {e}")
+            import traceback
+            traceback.print_exc()
+            return None

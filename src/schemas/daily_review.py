@@ -143,6 +143,62 @@ class MarketSentiment(BaseModel):
     sentiment_label: str = Field(..., description="Overall sentiment label (e.g., '强势', '震荡')")
 
 
+class FundamentalAlert(BaseModel):
+    """
+    Fundamental analysis alert for stocks with price-fundamental divergence.
+    """
+    ticker: str = Field(..., description="Stock ticker")
+    name: str = Field(..., description="Stock name")
+    sector: str = Field(..., description="Sector name")
+    warning: str = Field(..., description="Warning message")
+    divergence_level: str = Field(..., description="Divergence level: '严重', '中等', '轻微'")
+    details: Dict = Field(..., description="Detailed analysis data")
+
+
+class QualityStock(BaseModel):
+    """
+    Quality stock with strong fundamentals (top 20% in industry).
+    """
+    ticker: str = Field(..., description="Stock ticker")
+    name: str = Field(..., description="Stock name")
+    sector: str = Field(..., description="Sector name")
+    industry: str = Field(..., description="Industry name")
+    roe: Optional[float] = Field(None, description="ROE value")
+    rank: int = Field(..., description="Rank within industry")
+    percentile: float = Field(..., description="Percentile (0-100)")
+    profit_yoy: Optional[float] = Field(None, description="Net profit YoY growth %")
+
+
+class RiskStock(BaseModel):
+    """
+    Risk stock with poor fundamentals but rising prices.
+    """
+    ticker: str = Field(..., description="Stock ticker")
+    name: str = Field(..., description="Stock name")
+    sector: str = Field(..., description="Sector name")
+    warning: str = Field(..., description="Risk warning message")
+    roe: Optional[float] = Field(None, description="ROE value")
+    profit_yoy: Optional[float] = Field(None, description="Net profit YoY growth %")
+
+
+class FundamentalAnalysis(BaseModel):
+    """
+    Comprehensive fundamental analysis results.
+    """
+    divergence_alerts: List[FundamentalAlert] = Field(
+        default_factory=list,
+        description="Stocks with price-fundamental divergence"
+    )
+    quality_stocks: List[QualityStock] = Field(
+        default_factory=list,
+        description="Stocks with strong fundamentals (top 20% in industry)"
+    )
+    risk_stocks: List[RiskStock] = Field(
+        default_factory=list,
+        description="Stocks with poor fundamentals but rising prices"
+    )
+
+
 class DailyReviewSnapshot(BaseModel):
     """
     Complete daily review data snapshot.
@@ -163,6 +219,12 @@ class DailyReviewSnapshot(BaseModel):
     sample_stocks: Dict[str, List[SampleStock]] = Field(
         ...,
         description="Representative stocks grouped by sector name"
+    )
+
+    # Fundamental Analysis
+    fundamental_analysis: Optional[Dict] = Field(
+        None,
+        description="Fundamental analysis results including divergence alerts, quality stocks, and risk stocks"
     )
 
     # Optional Technical Data
