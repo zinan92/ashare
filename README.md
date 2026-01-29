@@ -39,6 +39,28 @@
 
 ## 快速开始
 
+> 📖 **完整部署指南**: 如果你要在新环境部署或fork此项目，请查看 [部署指南](docs/DEPLOYMENT_GUIDE.md)
+
+### 自动化部署（推荐）
+
+```bash
+# 克隆项目
+git clone https://github.com/YOUR_USERNAME/a-share-data.git
+cd a-share-data
+
+# 运行自动化部署脚本
+./scripts/deploy.sh
+
+# 配置环境变量（编辑 .env 文件，填入你的 TUSHARE_TOKEN）
+nano .env
+
+# 启动服务
+source venv/bin/activate
+uvicorn src.main:app --reload
+```
+
+### 手动部署
+
 ### 1. 安装依赖
 
 ```bash
