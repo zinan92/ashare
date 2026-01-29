@@ -342,14 +342,6 @@ export function StockDetail({ ticker, maConfig, onMAConfigChange, klineLimit = 1
 
         {/* 分类信息 */}
         <div className="stock-detail__classifications">
-          {symbol.superCategory && (
-            <div className="stock-detail__classification-item">
-              <span className="stock-detail__classification-label">超级行业组</span>
-              <span className="stock-detail__classification-value stock-detail__classification-value--super">
-                {symbol.superCategory}
-              </span>
-            </div>
-          )}
           {symbol.industryLv1 && (
             <div className="stock-detail__classification-item">
               <span className="stock-detail__classification-label">行业</span>

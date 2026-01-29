@@ -556,20 +556,6 @@ body {
   padding-right: 0.5rem;
 }
 
-.boards-view__loading,
-.boards-view__error {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  font-size: 1.1rem;
-  color: #9aa4bf;
-}
-
-.boards-view__error {
-  color: #ff8ba7;
-}
-
 .board-card {
   background: #12182a;
   border-radius: 12px;
@@ -1378,61 +1364,6 @@ body {
 }
 
 /* ================================
-   Boards View Category Header
-   ================================ */
-
-.boards-view {
-  width: 100%;
-}
-
-.boards-view__category-header {
-  display: flex;
-  align-items: center;
-  gap: 1.5rem;
-  margin-bottom: 2rem;
-  padding: 1.25rem 1.5rem;
-  background: linear-gradient(135deg, #1b2233, #121624);
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.boards-view__back-btn {
-  padding: 0.6rem 1.2rem;
-  background: linear-gradient(135deg, rgba(58, 75, 116, 0.3), rgba(35, 45, 70, 0.3));
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  color: #b8c2e1;
-  font-size: 0.9rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.boards-view__back-btn:hover {
-  background: linear-gradient(135deg, rgba(58, 75, 116, 0.5), rgba(35, 45, 70, 0.5));
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(58, 75, 116, 0.3);
-}
-
-.boards-view__category-title {
-  margin: 0;
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: #e6edf7;
-  flex: 1;
-}
-
-.boards-view__category-count {
-  padding: 0.5rem 1rem;
-  background: linear-gradient(135deg, rgba(58, 75, 116, 0.3), rgba(35, 45, 70, 0.3));
-  border-radius: 20px;
-  font-size: 0.85rem;
-  color: #b8c2e1;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-/* ================================
    ETF Flow Panel
    ================================ */
 
@@ -2118,112 +2049,6 @@ body {
   background: rgba(239, 95, 124, 0.15);
   color: #ef5f7c;
   border-color: rgba(239, 95, 124, 0.3);
-}
-
-/* Market HeatMap Component - New Design */
-.market-heatmap {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-
-.market-heatmap__header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding-bottom: 0.75rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  margin-bottom: 0.75rem;
-}
-
-.market-heatmap__title-section {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.market-heatmap__title {
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 600;
-  color: #e6edf7;
-}
-
-.market-heatmap__update-time {
-  padding: 0.25rem 0.6rem;
-  background: rgba(20, 184, 166, 0.1);
-  border-radius: 12px;
-  font-size: 0.7rem;
-  color: #14b8a6;
-  border: 1px solid rgba(20, 184, 166, 0.2);
-}
-
-.market-heatmap__content {
-  flex: 1;
-  min-height: 0;
-}
-
-.market-heatmap__footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding-top: 0.75rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  margin-top: 0.5rem;
-}
-
-.market-heatmap__legend {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  font-size: 0.75rem;
-  color: #8f9bbd;
-}
-
-.market-heatmap__legend-item {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-.market-heatmap__legend-color {
-  width: 14px;
-  height: 14px;
-  border-radius: 3px;
-}
-
-.market-heatmap__legend-color--down {
-  background: #ef4444;
-}
-
-.market-heatmap__legend-color--flat {
-  background: #475569;
-}
-
-.market-heatmap__legend-color--up {
-  background: #10b981;
-}
-
-.market-heatmap__legend-note {
-  color: #6b7790;
-  font-size: 0.7rem;
-  font-style: italic;
-}
-
-.market-heatmap__loading,
-.market-heatmap__error {
-  padding: 2rem;
-  text-align: center;
-  color: #8f9bbd;
-  font-size: 0.9rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-}
-
-.market-heatmap__error {
-  color: #ef4444;
 }
 
 /* Stock Filter Controls */

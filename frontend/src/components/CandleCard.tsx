@@ -36,7 +36,6 @@ export function CandleCard({ symbol, timeframe, maConfig, onStockClick, realtime
   const [isInWatchlist, setIsInWatchlist] = useState(false);
   const cardRef = useRef<HTMLElement>(null);
   const queryClient = useQueryClient();
-  const superCategory = symbol.superCategory || "未分类";
   const industry = symbol.industryLv1 || "未知";
 
   const { data } = useQuery({
@@ -269,7 +268,6 @@ export function CandleCard({ symbol, timeframe, maConfig, onStockClick, realtime
 
       <footer className="candle-card__footer">
         <div className="candle-card__category-info">
-          <span className="candle-card__super-category">{superCategory}</span>
           <span className="candle-card__industry">{industry}</span>
         </div>
         <button
