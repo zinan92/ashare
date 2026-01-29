@@ -29,7 +29,7 @@ export function UpdateTimeIndicator({ section, timeframe = "both" }: UpdateTimeI
   const { data, isLoading } = useQuery<UpdateTimesResponse>({
     queryKey: ["update-times"],
     queryFn: async () => {
-      const response = await apiFetch("/api/admin/update-times");
+      const response = await apiFetch("/api/status/update-times");
       if (!response.ok) {
         throw new Error("Failed to fetch update times");
       }
