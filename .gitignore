@@ -45,9 +45,6 @@ docs/monitor/*.json
 !data/sectors/*.json
 !data/sectors/*.py
 
-# Exception: Allow super category mapping to be synced
-!data/super_category_mapping.csv
-
 # IDE
 .vscode/
 .idea/
