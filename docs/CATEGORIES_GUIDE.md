@@ -1,131 +1,73 @@
 # 分类数据完整指南
 
-## 📊 分类体系概览
+## 📊 统一分类体系
 
-A-Share-Data 项目有 **三层分类体系**，每层有不同的用途和数据来源：
+A-Share-Data 项目使用 **统一的赛道分类系统**，简化了分类管理：
 
 ```
-├── 1. 超级行业组 (14个) - 宏观行业分类
-├── 2. 自定义赛道 (4个) - 投资主题跟踪
-└── 3. 自选股分类 (5个) - 个人分类管理
+赛道分类 (16个) - 投资主题分类
+├── 数据存储: stock_sectors + available_sectors 表
+├── 数据文件: data/sectors/*.csv
+├── 应用范围: 所有股票 + 自选股
+└── Fork后: ✅ 自动同步（已加入 git）
 ```
 
 ---
 
-## 1️⃣ 超级行业组 (Super Categories)
+## 🎯 赛道分类 (Sectors)
 
 ### 基本信息
-- **数量**: 14个
-- **数据来源**: `data/super_category_mapping.csv`
-- **API端点**: `GET /api/boards/super-categories`
+- **数量**: 16个赛道
+- **总股票数**: 369只
+- **数据来源**:
+  - 数据库: `stock_sectors` + `available_sectors` 表
+  - CSV文件: `data/sectors/*.csv`
+- **API端点**: `GET /api/sectors/list/available`
 - **Fork后**: ✅ 会自动同步（现已加入 git）
 
-### 分类列表
+### 当前赛道分类统计
 
-| 序号 | 分类名称 | 进攻性评分 | 说明 |
-|------|---------|----------|------|
-| 1 | 半导体与硬件 | 95 | 芯片制造、电子元器件 |
-| 2 | 软件与互联网 | 90 | 软件、IT服务、互联网平台 |
-| 3 | 通信与5G | 75 | 通信设备、电信运营 |
-| 4 | 消费电子 | 80 | 手机、可穿戴设备 |
-| 5 | 新能源产业链 | 85 | 光伏、电池、风电 |
-| 6 | 汽车产业链 | 70 | 整车、零部件、汽车服务 |
-| 7 | 智能制造 | 65 | 工程机械、自动化设备 |
-| 8 | 军工航天 | 55 | 军工电子、国防装备 |
-| 9 | 医药健康 | 35 | 化学制药、生物制品、医疗器械 |
-| 10 | 大消费 | 40 | 白酒、食品、零售、家电 |
-| 11 | 资源能源 | 50 | 煤炭、油气、钢铁、化工 |
-| 12 | 基建地产链 | 45 | 建筑、建材、房地产、物流 |
-| 13 | 公用事业 | 10 | 电力、燃气、环保 |
-| 14 | 金融地产 | 25 | 银行、保险、证券 |
+| 赛道名称 | 股票数量 | 占比 | 数据文件 |
+|---------|---------|------|---------|
+| AI应用 | 67只 | 18.2% | AI应用.csv |
+| 金属 | 58只 | 15.7% | 金属.csv |
+| 军工 | 46只 | 12.5% | 军工.csv |
+| 机器人 | 38只 | 10.3% | 机器人.csv |
+| 芯片 | 33只 | 8.9% | 芯片.csv |
+| 创新药 | 27只 | 7.3% | 创新药.csv |
+| 光伏 | 20只 | 5.4% | 光伏.csv |
+| 发电 | 19只 | 5.1% | 发电.csv |
+| 新能源汽车 | 14只 | 3.8% | 新能源汽车.csv |
+| 贵金属 | 12只 | 3.3% | 贵金属.csv |
+| 其他 | 12只 | 3.3% | 其他.csv |
+| 半导体 | 7只 | 1.9% | 半导体.csv |
+| PCB | 7只 | 1.9% | PCB.csv |
+| 消费 | 4只 | 1.1% | 消费.csv |
+| 可控核聚变 | 3只 | 0.8% | 可控核聚变.csv |
+| 脑机接口 | 2只 | 0.5% | 脑机接口.csv |
 
-### 使用方式
+### 与自选股的关系
 
-**前端调用**:
-```typescript
-const response = await fetch('/api/boards/super-categories');
-const data = await response.json();
-```
+✅ **统一分类**: 自选股现在直接使用赛道分类
 
-**查看数据文件**:
-```bash
-cat data/super_category_mapping.csv
-```
+- 自选股表 (`watchlist`) 中的 `category` 字段引用 `stock_sectors.sector`
+- 348只自选股全部使用16个赛道分类
+- 不再有独立的自选股分类系统
 
----
-
-## 2️⃣ 自定义赛道 (Custom Tracks)
-
-### 基本信息
-- **数量**: 4个
-- **数据来源**: `src/api/routes_tracks.py` (硬编码)
-- **API端点**: `GET /api/tracks`
-- **Fork后**: ✅ 会自动同步（在代码中）
-
-### 分类列表
-
-| 赛道名称 | 对应概念板块 | 说明 |
-|---------|------------|------|
-| 人形机器人 | 人形机器人 | 人形机器人产业链 |
-| PCB | PCB概念 | 印刷电路板 |
-| 液冷 | 液冷服务器 | 数据中心液冷技术 |
-| 储能 | 储能 | 储能设备和系统 |
-
-### 添加新赛道
-
-编辑 `src/api/routes_tracks.py`:
-
-```python
-CUSTOM_TRACKS: Dict[str, List[str]] = {
-    "人形机器人": ["人形机器人"],
-    "PCB": ["PCB概念"],
-    "液冷": ["液冷服务器"],
-    "储能": ["储能"],
-    # 添加新赛道
-    "AI芯片": ["AI芯片", "GPU"],
-}
-
-TRACK_ORDER: List[str] = ["人形机器人", "PCB", "液冷", "储能", "AI芯片"]
-```
-
-### 使用方式
-
-**获取所有赛道**:
-```bash
-curl http://localhost:8000/api/tracks
-```
-
-**获取赛道成分股**:
-```bash
-curl http://localhost:8000/api/tracks/人形机器人/symbols
+**示例**:
+```sql
+-- 某只股票在两个表中的分类一致
+stock_sectors:  600519 -> "消费"
+watchlist:      600519 -> "消费"  (统一)
 ```
 
 ---
 
-## 3️⃣ 自选股分类 (Watchlist Categories)
+## 🔄 Fork 后恢复分类
 
-### 基本信息
-- **数量**: 5个（你的当前配置）
-- **总股票数**: 348只
-- **数据来源**: 数据库 `watchlist` 表 + `data/watchlist_categories/`
-- **API端点**: `GET /api/watchlist`
-- **Fork后**: ✅ 现在会自动同步（已导出到 git）
+### 方式1: 自动导入（推荐）
 
-### 当前分类统计
-
-| 分类名称 | 股票数量 | 数据文件 |
-|---------|---------|---------|
-| AI应用 | 19 | AI应用.csv |
-| 创新药 | 20 | 创新药.csv |
-| 金属 | 26 | 金属.csv |
-| 贵金属 | 11 | 贵金属.csv |
-| 未分类 | 272 | 未分类.csv |
-
-### Fork 后恢复分类
-
-#### 方式1: 自动导入（推荐）
-
-分类数据已导出到 `data/watchlist_categories/`，fork 后会随 git 同步。
+赛道分类数据已导出到 `data/sectors/`，fork 后会随 git 同步。
 
 **步骤**:
 ```bash
@@ -136,24 +78,23 @@ cd a-share-data
 # 2. 部署项目
 ./scripts/deploy.sh
 
-# 3. 导入分类数据
-python data/watchlist_categories/import_categories.py
+# 3. 导入赛道分类数据
+python data/sectors/import_sectors.py
 ```
 
 输出示例:
 ```
-开始导入自选股分类数据...
+开始导入赛道分类数据...
 
-✓ AI应用: 更新了 19 只股票
-✓ 创新药: 更新了 20 只股票
-✓ 金属: 更新了 26 只股票
-✓ 贵金属: 更新了 11 只股票
-✓ 未分类: 更新了 272 只股票
+✓ AI应用: 插入了 67 只股票
+✓ 芯片: 插入了 33 只股票
+✓ 金属: 插入了 58 只股票
+...
 
-导入完成！共更新 348 只股票的分类
+导入完成！共导入 369 只股票
 ```
 
-#### 方式2: 从备份恢复
+### 方式2: 从备份恢复
 
 ```bash
 # 在旧环境备份
@@ -165,33 +106,74 @@ scp backups/ashare-backup-*.tar.gz new-machine:/path/
 # 在新环境恢复
 cd /path/to/new-project
 tar -xzf ashare-backup-*.tar.gz
-cp -r ashare-backup-*/data/watchlist_categories data/
-python data/watchlist_categories/import_categories.py
+cp -r ashare-backup-*/data/sectors data/
+python data/sectors/import_sectors.py
 ```
 
-### 修改分类
+---
 
-#### 通过API修改单个股票分类:
+## 🛠️ 管理赛道分类
 
-```bash
-curl -X PUT http://localhost:8000/api/watchlist/600519 \
-  -H "Content-Type: application/json" \
-  -d '{"category": "大消费"}'
+### 添加新股票到赛道
+
+#### 方式1: 通过Python脚本
+```python
+import sqlite3
+from datetime import datetime
+
+conn = sqlite3.connect('data/market.db')
+cursor = conn.cursor()
+
+# 添加股票到赛道
+now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+cursor.execute(
+    "INSERT INTO stock_sectors (ticker, sector, created_at, updated_at) VALUES (?, ?, ?, ?)",
+    ("600519", "消费", now, now)
+)
+
+conn.commit()
+conn.close()
 ```
 
-#### 批量修改分类:
+#### 方式2: 直接SQL
+```sql
+INSERT INTO stock_sectors (ticker, sector, created_at, updated_at)
+VALUES ('600519', '消费', datetime('now'), datetime('now'));
+```
 
-编辑 `data/watchlist_categories/AI应用.csv`，添加新股票:
+### 批量添加股票
+
+编辑对应的CSV文件，比如 `data/sectors/消费.csv`:
 ```csv
 ticker
-688111
-002230
-600519  # 新增
+600519
+000858
+600887
 ```
 
 然后导入:
 ```bash
-python data/watchlist_categories/import_categories.py
+python data/sectors/import_sectors.py
+```
+
+### 修改股票分类
+
+```sql
+UPDATE stock_sectors
+SET sector = '新能源汽车', updated_at = datetime('now')
+WHERE ticker = '600519';
+```
+
+### 添加新赛道
+
+```sql
+-- 1. 添加赛道定义
+INSERT INTO available_sectors (name, display_order, created_at)
+VALUES ('量子科技', 16, datetime('now'));
+
+-- 2. 添加成分股
+INSERT INTO stock_sectors (ticker, sector, created_at, updated_at)
+VALUES ('688027', '量子科技', datetime('now'), datetime('now'));
 ```
 
 ### 导出最新分类
@@ -200,12 +182,51 @@ python data/watchlist_categories/import_categories.py
 
 ```bash
 # 导出当前数据库中的分类
-python scripts/export_categories.py
+python scripts/export_sectors.py
 
 # 提交到 git
-git add data/watchlist_categories/
-git commit -m "更新自选股分类"
+git add data/sectors/
+git commit -m "更新赛道分类"
 git push
+```
+
+---
+
+## 📝 API 端点汇总
+
+| 功能 | 端点 | 说明 |
+|------|------|------|
+| 获取所有赛道定义 | `GET /api/sectors/list/available` | 16个赛道列表 |
+| 获取赛道成分股 | `GET /api/sectors/{sector_name}/stocks` | 某个赛道的所有股票 |
+| 获取赛道成交额统计 | `GET /api/sectors/turnover` | 各赛道成交额排名 |
+| 批量查询赛道成交额 | `POST /api/sectors/batch` | 批量获取多个赛道数据 |
+| 获取自选股列表 | `GET /api/watchlist` | 348只自选股（含赛道分类） |
+| 添加自选股 | `POST /api/watchlist` | 添加股票到自选股 |
+| 更新自选股分类 | `PUT /api/watchlist/{ticker}` | 修改自选股的赛道分类 |
+| 删除自选股 | `DELETE /api/watchlist/{ticker}` | 从自选股移除 |
+
+### API 使用示例
+
+**获取所有赛道**:
+```bash
+curl http://localhost:8000/api/sectors/list/available
+```
+
+**获取某个赛道的成分股**:
+```bash
+curl http://localhost:8000/api/sectors/AI应用/stocks
+```
+
+**获取赛道成交额统计**:
+```bash
+curl http://localhost:8000/api/sectors/turnover
+```
+
+**添加自选股并指定赛道**:
+```bash
+curl -X POST http://localhost:8000/api/watchlist \
+  -H "Content-Type: application/json" \
+  -d '{"ticker": "600519", "category": "消费"}'
 ```
 
 ---
@@ -213,64 +234,74 @@ git push
 ## 🔄 数据流向
 
 ```
-┌─────────────────────────────────────┐
-│  1. 超级行业组 (14个)                │
-│  data/super_category_mapping.csv    │
-│  ├─ 半导体与硬件                    │
-│  ├─ 软件与互联网                    │
-│  └─ ...                             │
-└─────────────────────────────────────┘
-              ↓ 用于行业分析
-┌─────────────────────────────────────┐
-│  2. 自定义赛道 (4个)                 │
-│  src/api/routes_tracks.py           │
-│  ├─ 人形机器人 → 概念板块映射        │
-│  ├─ PCB                             │
-│  └─ ...                             │
-└─────────────────────────────────────┘
-              ↓ 投资主题跟踪
-┌─────────────────────────────────────┐
-│  3. 自选股分类 (5个)                 │
-│  data/watchlist_categories/         │
-│  ├─ AI应用 (19只)                   │
-│  ├─ 创新药 (20只)                   │
-│  └─ ...                             │
-└─────────────────────────────────────┘
-              ↓ 个人持仓管理
-         ┌─────────┐
-         │ 数据库  │
-         └─────────┘
+┌──────────────────────────────────────────┐
+│  赛道分类定义 (16个)                      │
+│  available_sectors 表                    │
+│  data/sectors/available_sectors.json     │
+├──────────────────────────────────────────┤
+│  1. AI应用     (display_order: 0)        │
+│  2. 芯片       (display_order: 1)        │
+│  3. PCB        (display_order: 2)        │
+│  ...                                     │
+│  16. 贵金属    (display_order: 15)       │
+└──────────────────────────────────────────┘
+              ↓
+┌──────────────────────────────────────────┐
+│  股票赛道映射 (369只)                     │
+│  stock_sectors 表                        │
+│  data/sectors/*.csv                      │
+├──────────────────────────────────────────┤
+│  600519 -> 消费                          │
+│  000858 -> 新能源汽车                     │
+│  601012 -> 金属                          │
+│  ...                                     │
+└──────────────────────────────────────────┘
+              ↓
+┌──────────────────────────────────────────┐
+│  自选股 (348只)                          │
+│  watchlist 表                            │
+│  category 字段引用 stock_sectors.sector  │
+├──────────────────────────────────────────┤
+│  600519: category = "消费" ✅            │
+│  000858: category = "新能源汽车" ✅      │
+│  601012: category = "金属" ✅            │
+└──────────────────────────────────────────┘
 ```
-
----
-
-## 📝 API 端点汇总
-
-| 功能 | 端点 | 分类层级 |
-|------|------|---------|
-| 获取超级行业组列表 | `GET /api/boards/super-categories` | 1 |
-| 获取超级行业组日线数据 | `GET /api/boards/super-categories/daily` | 1 |
-| 获取所有赛道 | `GET /api/tracks` | 2 |
-| 获取赛道详情 | `GET /api/tracks/{track_name}` | 2 |
-| 获取赛道成分股 | `GET /api/tracks/{track_name}/symbols` | 2 |
-| 获取自选股列表 | `GET /api/watchlist` | 3 |
-| 添加自选股 | `POST /api/watchlist` | 3 |
-| 更新自选股分类 | `PUT /api/watchlist/{ticker}` | 3 |
-| 删除自选股 | `DELETE /api/watchlist/{ticker}` | 3 |
 
 ---
 
 ## 🛠️ 工具脚本
 
-### 导出分类数据
+### 导出赛道分类数据
 ```bash
-python scripts/export_categories.py
+python scripts/export_sectors.py
 ```
+- 从数据库导出到 `data/sectors/`
+- 生成每个赛道的CSV文件
+- 生成汇总JSON文件
+- 生成导入脚本
 
-### 导入分类数据
+### 导入赛道分类数据
 ```bash
-python data/watchlist_categories/import_categories.py
+python data/sectors/import_sectors.py
 ```
+- 从 `data/sectors/` 导入到数据库
+- 先清空表再导入（完整替换）
+- 适用于fork后的初始化
+
+### 统一分类
+```bash
+python scripts/unify_watchlist_categories.py
+```
+- 将自选股分类统一为赛道分类
+- 已执行过，无需再次运行
+
+### 添加缺失的赛道分类
+```bash
+python scripts/add_missing_sectors.py
+```
+- 为自选股中未分类的股票添加赛道
+- 已执行过，无需再次运行
 
 ### 备份所有数据
 ```bash
@@ -286,52 +317,44 @@ python data/watchlist_categories/import_categories.py
 
 ## ❓ 常见问题
 
-### Q1: Fork 后为什么只看到5个分类？
+### Q1: 为什么统一分类？
 
-**A**: 你可能在看**自选股分类**，而不是**超级行业组**。
+**A**: 之前有两套分类系统很混乱：
+- ❌ 自选股分类 (5个): AI应用、创新药、金属、贵金属、未分类
+- ✅ 赛道分类 (16个): 更完整的投资主题分类
 
-- 超级行业组: 14个，用于行业分析
-- 自选股分类: 5个，用于个人持仓管理
+现在统一使用赛道分类，分类更细致，管理更方便。
 
-两者是不同的分类体系。
+### Q2: 自选股的分类数据存在哪里？
 
-### Q2: 如何添加新的自选股分类？
+**A**: `watchlist` 表的 `category` 字段，值来自 `stock_sectors.sector`
+- 不再有独立的自选股分类CSV文件
+- 直接使用16个赛道分类
 
-**方式1**: 通过API添加股票时指定分类
+### Q3: 如何添加新赛道？
+
+**步骤**:
+1. 添加赛道定义到 `available_sectors` 表
+2. 添加成分股到 `stock_sectors` 表
+3. 导出数据: `python scripts/export_sectors.py`
+4. 提交到git
+
+### Q4: Fork后只有部分股票有赛道分类怎么办？
+
+**A**: 运行导入脚本:
 ```bash
-curl -X POST http://localhost:8000/api/watchlist \
-  -H "Content-Type: application/json" \
-  -d '{"ticker": "600519", "category": "白酒"}'
+python data/sectors/import_sectors.py
 ```
 
-**方式2**: 编辑CSV文件
-```bash
-# 创建新分类文件
-echo "ticker" > data/watchlist_categories/白酒.csv
-echo "600519" >> data/watchlist_categories/白酒.csv
+这会从git同步的CSV文件恢复所有369只股票的赛道分类。
 
-# 导入
-python data/watchlist_categories/import_categories.py
-```
+### Q5: 数据库中的分类和CSV中的分类不一致怎么办？
 
-### Q3: 如何修改超级行业组？
-
-编辑 `data/super_category_mapping.csv`:
-```csv
-超级行业组,进攻性评分,行业名称,备注
-新分类,85,细分行业1,说明
-新分类,85,细分行业2,说明
-```
-
-提交后会自动同步到所有 fork。
-
-### Q4: 数据库中的分类和CSV中的分类不一致怎么办？
-
-CSV是导出的快照，数据库是实时数据。
+**A**: CSV是导出的快照，数据库是实时数据。
 
 **更新流程**:
 1. 修改数据库中的分类（通过API或直接SQL）
-2. 运行 `python scripts/export_categories.py` 导出
+2. 运行 `python scripts/export_sectors.py` 导出
 3. 提交到 git
 
 ---
@@ -345,3 +368,4 @@ CSV是导出的快照，数据库是实时数据。
 ---
 
 **最后更新**: 2026-01-29
+**版本**: v2.0 - 统一分类系统

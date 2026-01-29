@@ -33,12 +33,6 @@ docs/monitor/*.json
 *.csv
 *.parquet
 
-# Exception: Allow watchlist categories to be synced
-!data/watchlist_categories/
-!data/watchlist_categories/*.csv
-!data/watchlist_categories/*.json
-!data/watchlist_categories/*.py
-
 # Exception: Allow sectors (tracks) to be synced
 !data/sectors/
 !data/sectors/*.csv
