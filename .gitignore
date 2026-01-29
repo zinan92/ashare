@@ -33,6 +33,15 @@ docs/monitor/*.json
 *.csv
 *.parquet
 
+# Exception: Allow watchlist categories to be synced
+!data/watchlist_categories/
+!data/watchlist_categories/*.csv
+!data/watchlist_categories/*.json
+!data/watchlist_categories/*.py
+
+# Exception: Allow super category mapping to be synced
+!data/super_category_mapping.csv
+
 # IDE
 .vscode/
 .idea/
