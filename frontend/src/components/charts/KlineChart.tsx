@@ -72,11 +72,6 @@ const COLORS = {
 function parseDate(dateStr: string): Time {
   const str = dateStr.toString();
 
-  // 检查是否是 Unix 时间戳（纯数字且长度为10位左右）
-  if (/^\d{9,11}$/.test(str)) {
-    return parseInt(str, 10) as Time;
-  }
-
   // 如果已经是 YYYY-MM-DD 格式，直接返回
   if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
     return str as Time;
@@ -88,6 +83,12 @@ function parseDate(dateStr: string): Time {
     const month = str.slice(4, 6);
     const day = str.slice(6, 8);
     return `${year}-${month}-${day}` as Time;
+  }
+
+  // 检查是否是 Unix 时间戳（纯数字且长度为10位左右）
+  // 注意：必须在8位数字检查之后，否则会误判
+  if (/^\d{9,11}$/.test(str)) {
+    return parseInt(str, 10) as Time;
   }
 
   // 其他格式：移除非数字字符后取前8位

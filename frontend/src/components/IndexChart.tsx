@@ -308,7 +308,7 @@ export function IndexChart({ tsCode = "000001.SH", maConfig, hideIndicators = fa
   const mins30ChartData: KlineDataPoint[] = useMemo(() => {
     if (!kline30mData || !kline30mData.klines) return [];
     return kline30mData.klines.map(k => ({
-      date: String(k.datetime),
+      date: String(k.datetime), // Unix时间戳，parseDate会处理
       open: k.open,
       high: k.high,
       low: k.low,
