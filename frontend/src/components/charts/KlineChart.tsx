@@ -70,20 +70,38 @@ const COLORS = {
 
 // 解析日期字符串为 Time 格式
 function parseDate(dateStr: string): Time {
+  const str = dateStr.toString();
+
   // 检查是否是 Unix 时间戳（纯数字且长度为10位左右）
-  if (/^\d{9,11}$/.test(dateStr)) {
-    return parseInt(dateStr) as Time;
+  if (/^\d{9,11}$/.test(str)) {
+    return parseInt(str, 10) as Time;
   }
+
   // 如果已经是 YYYY-MM-DD 格式，直接返回
-  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-    return dateStr as Time;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    return str as Time;
   }
-  // 处理不同格式: "20250102" 或 "20250102 1430"
-  const cleanDate = dateStr.toString().replace(/\D/g, '').slice(0, 8);
-  const year = parseInt(cleanDate.slice(0, 4));
-  const month = parseInt(cleanDate.slice(4, 6));
-  const day = parseInt(cleanDate.slice(6, 8));
-  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}` as Time;
+
+  // 处理 YYYYMMDD 格式 (8位数字，如 "20260129")
+  if (/^\d{8}$/.test(str)) {
+    const year = str.slice(0, 4);
+    const month = str.slice(4, 6);
+    const day = str.slice(6, 8);
+    return `${year}-${month}-${day}` as Time;
+  }
+
+  // 其他格式：移除非数字字符后取前8位
+  const cleanDate = str.replace(/\D/g, '').slice(0, 8);
+  if (cleanDate.length === 8) {
+    const year = cleanDate.slice(0, 4);
+    const month = cleanDate.slice(4, 6);
+    const day = cleanDate.slice(6, 8);
+    return `${year}-${month}-${day}` as Time;
+  }
+
+  // 如果都不匹配，返回原始字符串
+  console.warn(`Unable to parse date: ${str}`);
+  return str as Time;
 }
 
 export function KlineChart({
