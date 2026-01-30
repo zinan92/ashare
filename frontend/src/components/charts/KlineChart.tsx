@@ -186,6 +186,21 @@ export function KlineChart({
         timeScale: {
           borderColor: COLORS.grid,
           timeVisible: true,
+          tickMarkFormatter: (time: any) => {
+            // Custom formatter to ensure correct date display
+            if (typeof time === 'number') {
+              // Unix timestamp
+              const date = new Date(time * 1000);
+              return `${date.getMonth() + 1}/${date.getDate()}`;
+            } else if (typeof time === 'string') {
+              // YYYY-MM-DD format
+              const parts = time.split('-');
+              if (parts.length === 3) {
+                return `${parseInt(parts[1])}/${parseInt(parts[2])}`;
+              }
+            }
+            return String(time);
+          },
         },
         handleScroll: {
           mouseWheel: true,
