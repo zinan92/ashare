@@ -21,10 +21,10 @@ class SymbolType(str, Enum):
 
 class KlineTimeframe(str, Enum):
     """K线时间周期"""
-    DAY = "day"
-    MINS_30 = "30m"
-    MINS_5 = "5m"
-    MINS_1 = "1m"
+    DAY = "DAY"
+    MINS_30 = "MINS_30"
+    MINS_5 = "MINS_5"
+    MINS_1 = "MINS_1"
 
 
 class DataUpdateStatus(str, Enum):
