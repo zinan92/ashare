@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../utils/api";
 
 interface RefreshButtonProps {
@@ -6,6 +7,7 @@ interface RefreshButtonProps {
 }
 
 export function RefreshButton({ onRefreshComplete }: RefreshButtonProps) {
+  const queryClient = useQueryClient();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState("");
@@ -51,6 +53,10 @@ export function RefreshButton({ onRefreshComplete }: RefreshButtonProps) {
           clearInterval(timer);
           setMessage("✓ 刷新完成");
           setIsRefreshing(false);
+
+          // Invalidate all queries to refetch fresh data
+          queryClient.invalidateQueries();
+
           onRefreshComplete?.();
           setTimeout(() => setMessage(""), 3000);
         } else if (data.status === "failed") {
