@@ -46,19 +46,23 @@ class ConceptListResponse(BaseModel):
 
 
 def read_cache_file():
-    """读取缓存的JSON文件"""
+    """读取缓存的JSON文件
+
+    无论文件缺失还是解析失败，都返回空数据结构而不是抛出异常。
+    监控脚本未运行时，前端应显示"暂无数据"而不是错误页面。
+    """
+    empty_response = {"success": True, "timestamp": "", "total": 0, "data": []}
+
     if not CACHE_FILE.exists():
-        return {"success": True, "timestamp": "", "total": 0, "data": []}
+        return empty_response
 
     try:
         with open(CACHE_FILE, 'r', encoding='utf-8') as f:
             data = json.load(f)
         return data
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"读取缓存文件失败: {str(e)}"
-        )
+    except Exception:
+        # 文件损坏或格式错误时，返回空数据而非 500
+        return empty_response
 
 
 @router.get("/top", response_model=ConceptListResponse)

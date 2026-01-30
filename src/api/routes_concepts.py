@@ -122,10 +122,22 @@ class ConceptKlineResponse(BaseModel):
 def list_concepts(
     db: Session = Depends(get_db),
 ):
-    """获取所有热门概念板块列表"""
+    """获取所有热门概念板块列表
+
+    当 hot_concept_categories.csv 不存在时，返回空数组而不是 500 错误。
+    """
     hot_df = load_hot_concepts()
+    if hot_df.empty:
+        return ConceptListResponse(concepts=[], total=0)
+
     mapping = load_concept_mapping()
-    change_map = get_concept_change_pcts(db)
+
+    # 获取涨跌幅，失败时不影响主逻辑
+    try:
+        change_map = get_concept_change_pcts(db)
+    except Exception:
+        logger.warning("获取概念涨跌幅失败，使用空数据继续")
+        change_map = {}
 
     concepts = []
     for _, row in hot_df.iterrows():
@@ -146,8 +158,14 @@ def list_concepts(
 
 @router.get("/categories")
 def list_categories():
-    """获取概念分类列表"""
+    """获取概念分类列表
+
+    当 hot_concept_categories.csv 不存在时，返回空数组而不是 500 错误。
+    """
     hot_df = load_hot_concepts()
+    if hot_df.empty:
+        return []
+
     categories = hot_df.groupby('大类').agg({
         '概念名称': list,
         '股票数量': 'sum'

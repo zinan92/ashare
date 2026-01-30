@@ -44,12 +44,14 @@ def get_index_kline(
     获取指数日线K线数据 (从 klines 表)
 
     Args:
-        ts_code: 指数代码 (000001.SH=上证指数, 399001.SZ=深证成指, 399006.SZ=创业板指)
+        ts_code: 指数代码，支持 tushare (000001.SH) 或 sina (sh000001) 格式
         limit: K线数量
 
     Returns:
         包含K线、成交量、MACD的数据
     """
+    # 标准化输入：前端可能传 sh000001
+    ts_code = normalize_index_code(ts_code)
     try:
         service = KlineService.create_with_session(db)
         result = service.get_klines_with_meta(
@@ -126,11 +128,13 @@ def get_index_quote(ts_code: str = "000001.SH") -> Dict[str, Any]:
     获取指数实时行情和指标数据
 
     Args:
-        ts_code: 指数代码
+        ts_code: 指数代码，支持 tushare (000001.SH) 或 sina (sh000001) 格式
 
     Returns:
         包含价格、成交、市值、PE等指标的数据
     """
+    # 标准化输入：前端可能传 sh000001
+    ts_code = normalize_index_code(ts_code)
     try:
         client = get_tushare_client()
 
@@ -250,7 +254,7 @@ def get_index_name(ts_code: str) -> str:
 
 def ts_code_to_sina(ts_code: str) -> str:
     """将Tushare代码或Sina代码转换为Sina代码格式
-    
+
     支持: 000001.SH → sh000001, sh000001 → sh000001
     """
     # Already in sina format (sh000001, sz399006, etc.)
@@ -268,13 +272,40 @@ def ts_code_to_sina(ts_code: str) -> str:
     return ts_code
 
 
+def sina_to_ts_code(sina_code: str) -> str:
+    """将Sina代码转换为Tushare代码格式（反向解析）
+
+    支持: sh000001 → 000001.SH, 000001.SH → 000001.SH
+    前端可能传入 sh000001 格式，后端 DB/服务层期望 000001.SH 格式。
+    """
+    # Already in tushare format (000001.SH)
+    if "." in sina_code:
+        return sina_code
+    # Sina format: sh000001, sz399006, bj830799
+    if sina_code.startswith("sh"):
+        return f"{sina_code[2:]}.SH"
+    elif sina_code.startswith("sz"):
+        return f"{sina_code[2:]}.SZ"
+    elif sina_code.startswith("bj"):
+        return f"{sina_code[2:]}.BJ"
+    return sina_code
+
+
+def normalize_index_code(ts_code: str) -> str:
+    """标准化指数代码：接受 sina 或 tushare 格式，统一返回 tushare 格式
+
+    前端可能传入 sh000001 或 000001.SH，统一转为 000001.SH。
+    """
+    return sina_to_ts_code(ts_code)
+
+
 @router.get("/realtime/{ts_code}")
 async def get_index_realtime(ts_code: str = "000001.SH"):
     """
     获取指数实时行情（使用Sina API）
 
     Args:
-        ts_code: 指数代码 (000001.SH=上证指数, 399006.SZ=创业板指, 000688.SH=科创50)
+        ts_code: 指数代码，支持 tushare (000001.SH) 或 sina (sh000001) 格式
 
     Returns:
         实时价格、涨跌幅等数据
@@ -282,6 +313,8 @@ async def get_index_realtime(ts_code: str = "000001.SH"):
     import httpx
     import re
 
+    # 标准化输入：前端可能传 sh000001，统一转为 000001.SH 再转 sina
+    ts_code = normalize_index_code(ts_code)
     sina_code = ts_code_to_sina(ts_code)
     url = f"http://hq.sinajs.cn/list=s_{sina_code}"
 
@@ -338,12 +371,14 @@ def get_index_kline_30m(
     获取指数30分钟K线数据 (从 klines 表)
 
     Args:
-        ts_code: 指数代码
+        ts_code: 指数代码，支持 tushare (000001.SH) 或 sina (sh000001) 格式
         limit: K线数量
 
     Returns:
         30分钟K线数据，包含MACD指标
     """
+    # 标准化输入：前端可能传 sh000001
+    ts_code = normalize_index_code(ts_code)
     try:
         service = KlineService.create_with_session(db)
         result = service.get_klines_with_meta(
