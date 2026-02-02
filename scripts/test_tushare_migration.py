@@ -14,7 +14,7 @@ sys.path.insert(0, str(project_root))
 from src.config import get_settings
 from src.services.tushare_client import TushareClient
 from src.services.tushare_data_provider import TushareDataProvider
-from src.services.tushare_board_service import TushareBoardService
+from src.services.tushare_client import TushareClient
 from src.models import Timeframe
 
 
@@ -155,13 +155,18 @@ def test_board_service():
     print_section("4. 测试板块服务")
 
     try:
-        service = TushareBoardService()
-        print("✓ TushareBoardService 初始化成功")
+        settings = get_settings()
+        client = TushareClient(
+            token=settings.tushare_token,
+            points=settings.tushare_points,
+            delay=settings.tushare_delay,
+            max_retries=settings.tushare_max_retries,
+        )
+        print("✓ TushareClient (board queries) 初始化成功")
 
         # 测试获取概念板块（从 Tushare API）
         print("\n测试: 获取同花顺概念板块列表...")
 
-        client = service.client
         concept_boards = client.fetch_ths_index(type='N')
 
         print(f"✓ 获取到 {len(concept_boards)} 个概念板块")

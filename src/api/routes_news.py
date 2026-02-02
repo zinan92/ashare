@@ -35,14 +35,14 @@ class StatsResponse(BaseModel):
 
 @router.get("/latest", response_model=NewsResponse)
 async def get_latest_news(
-    sources: str = Query("cls,ths", description="数据源，逗号分隔 (cls/ths/sina/futu)"),
+    sources: str = Query("cls,ths", description="数据源，逗号分隔 (cls/ths/futu)"),
     limit: int = Query(30, ge=1, le=100, description="返回条数"),
     only_new: bool = Query(False, description="仅返回新消息"),
 ):
     """
     获取最新快讯
     
-    - **sources**: 数据源，支持 cls(财联社), ths(同花顺), sina(新浪), futu(富途)
+    - **sources**: 数据源，支持 cls(财联社), ths(同花顺), futu(富途)
     - **limit**: 返回条数限制
     - **only_new**: 仅返回未见过的新消息
     """
@@ -78,7 +78,7 @@ async def get_news_by_source(
     """
     获取指定数据源的快讯
     
-    - **source**: cls / ths / sina / futu
+    - **source**: cls / ths / futu
     """
     service = get_news_service()
     

@@ -13,7 +13,7 @@ sys.path.insert(0, str(project_root))
 from src.config import get_settings
 from src.services.data_pipeline import MarketDataService
 from src.services.tushare_data_provider import TushareDataProvider
-from src.services.tushare_board_service import TushareBoardService
+from src.services.tushare_client import TushareClient
 from src.models import Timeframe
 from src.database import init_db
 
@@ -60,11 +60,16 @@ def main():
 
     # 4. 同步概念板块（只同步前10个作为示例）
     print("\n4. 同步概念板块...")
-    board_service = TushareBoardService()
+    settings = get_settings()
+    client = TushareClient(
+        token=settings.tushare_token,
+        points=settings.tushare_points,
+        delay=settings.tushare_delay,
+        max_retries=settings.tushare_max_retries,
+    )
 
     try:
         # 获取概念板块列表
-        client = board_service.client
         concept_boards = client.fetch_ths_index(type='N')
 
         # 只同步前10个

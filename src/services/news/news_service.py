@@ -26,11 +26,6 @@ class NewsService:
             'func': 'stock_info_global_ths', 
             'columns': ['标题', '内容', '发布时间', '链接'],
         },
-        'sina': {
-            'name': '新浪财经',
-            'func': 'stock_info_global_sina',
-            'columns': ['标题', '内容', '发布时间'],
-        },
         'futu': {
             'name': '富途牛牛',
             'func': 'stock_info_global_futu',
@@ -60,7 +55,7 @@ class NewsService:
         获取快讯
         
         Args:
-            source: 数据源 (cls/ths/sina/futu)
+            source: 数据源 (cls/ths/futu)
             limit: 返回条数
             use_cache: 是否使用缓存
             
