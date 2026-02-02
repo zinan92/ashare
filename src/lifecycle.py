@@ -4,6 +4,7 @@ from src.config import get_settings
 from src.database import init_db
 from src.tasks.scheduler import SchedulerManager
 from src.services.kline_scheduler import get_scheduler, stop_scheduler
+from src.services.crypto_ws import start_crypto_ws, stop_crypto_ws
 from src.utils.logging import LOGGER
 
 _scheduler_manager: SchedulerManager | None = None
@@ -29,6 +30,13 @@ def register_startup_shutdown(app: FastAPI) -> None:
             kline_scheduler.start()
             LOGGER.info("K-line scheduler STARTED (daily=Tushare, 30m=Sina)")
 
+        # Crypto WebSocket 实时数据流
+        try:
+            await start_crypto_ws()
+            LOGGER.info("Crypto WebSocket STARTED (Binance realtime)")
+        except Exception as e:
+            LOGGER.warning(f"Crypto WebSocket failed to start: {e} (non-fatal)")
+
     @app.on_event("shutdown")
     async def _shutdown() -> None:
         LOGGER.info("Application shutdown")
@@ -37,3 +45,9 @@ def register_startup_shutdown(app: FastAPI) -> None:
 
         # 停止K线数据调度器
         stop_scheduler()
+
+        # 停止Crypto WebSocket
+        try:
+            await stop_crypto_ws()
+        except Exception as e:
+            LOGGER.warning(f"Crypto WS shutdown error: {e}")
