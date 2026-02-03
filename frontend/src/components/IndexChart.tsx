@@ -273,18 +273,36 @@ export function IndexChart({ tsCode = "000001.SH", maConfig, hideIndicators = fa
 
   const isPositive = changePct >= 0;
 
-  // 转换日线数据格式
+  // 转换日线数据格式（含今日合成K线）
   const dailyChartData: KlineDataPoint[] = useMemo(() => {
     if (!klineData || !klineData.klines) return [];
-    return klineData.klines.map(k => ({
-      date: String(k.date), // KlineChart 的 parseDate 会处理各种格式
+    const base = klineData.klines.map(k => ({
+      date: String(k.date),
       open: k.open,
       high: k.high,
       low: k.low,
       close: k.close,
       volume: k.volume,
     }));
-  }, [klineData]);
+
+    // 用实时/行情数据合成今日K线（盘中日线还没入库时）
+    if (quoteData && quoteData.price && quoteData.price.open > 0) {
+      const todayDate = quoteData.trade_date || new Date().toISOString().slice(0, 10).replace(/-/g, "");
+      const lastDate = base.length > 0 ? base[base.length - 1].date : "";
+      if (todayDate !== lastDate) {
+        base.push({
+          date: todayDate,
+          open: quoteData.price.open,
+          high: quoteData.price.high,
+          low: quoteData.price.low,
+          close: realtimeData?.price ?? quoteData.price.close,
+          volume: quoteData.volume?.vol ?? 0,
+        });
+      }
+    }
+
+    return base;
+  }, [klineData, quoteData, realtimeData]);
 
   // 转换30分钟数据格式
   const mins30ChartData: KlineDataPoint[] = useMemo(() => {
