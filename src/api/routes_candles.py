@@ -157,11 +157,14 @@ def _fetch_and_save_klines(
         保存的记录数
     """
     from src.services.sina_kline_provider import SinaKlineProvider
+    from src.services.tushare_client import TushareClient
+    from src.config import get_settings
 
     logger.info(f"懒加载: 获取 {ticker} {timeframe} K线数据...")
 
     try:
         if timeframe == "day":
+<<<<<<< HEAD
             # 日线用 Tushare Pro
             from src.services.tushare_data_provider import TushareDataProvider
             from src.models import Timeframe as TF
@@ -172,6 +175,18 @@ def _fetch_and_save_klines(
                 df = ts_df.rename(columns={"timestamp": "timestamp"})
             else:
                 df = None
+=======
+            # 日线用TuShare
+            settings = get_settings()
+            client = TushareClient(
+                token=settings.tushare_token,
+                points=settings.tushare_points,
+                delay=settings.tushare_delay,
+                max_retries=settings.tushare_max_retries,
+            )
+            ts_code = client.normalize_ts_code(ticker)
+            df = client.fetch_daily(ts_code=ts_code)
+>>>>>>> ccf1351 (refactor: Perception Layer Phase 0+1 — cleanup + core interfaces (#40 #41))
         else:
             # 30分钟用新浪
             provider = SinaKlineProvider(delay=0.1)
@@ -183,21 +198,29 @@ def _fetch_and_save_klines(
 
         # 转换为 klines 格式
         klines = []
-        for _, row in df.iterrows():
-            if timeframe == "day":
-                dt_str = row["timestamp"].strftime("%Y-%m-%d")
-            else:
+        if timeframe == "day":
+            for _, row in df.head(limit).iterrows():
+                klines.append({
+                    "datetime": row["trade_date"],
+                    "open": float(row["open"]),
+                    "high": float(row["high"]),
+                    "low": float(row["low"]),
+                    "close": float(row["close"]),
+                    "volume": int(row["vol"]) if row["vol"] else 0,
+                    "amount": float(row.get("amount", 0)),
+                })
+        else:
+            for _, row in df.iterrows():
                 dt_str = row["timestamp"].strftime("%Y-%m-%d %H:%M:%S")
-
-            klines.append({
-                "datetime": dt_str,
-                "open": float(row["open"]),
-                "high": float(row["high"]),
-                "low": float(row["low"]),
-                "close": float(row["close"]),
-                "volume": int(row["volume"]) if row["volume"] else 0,
-                "amount": 0,
-            })
+                klines.append({
+                    "datetime": dt_str,
+                    "open": float(row["open"]),
+                    "high": float(row["high"]),
+                    "low": float(row["low"]),
+                    "close": float(row["close"]),
+                    "volume": int(row["volume"]) if row["volume"] else 0,
+                    "amount": 0,
+                })
 
         # 保存到数据库
         kline_timeframe = KlineTimeframe.DAY if timeframe == "day" else KlineTimeframe.MINS_30
