@@ -40,6 +40,7 @@ class EventType(str, Enum):
     ETF_FLOW = "etf_flow"
     EARNINGS = "earnings"
     SENTIMENT = "sentiment"
+    ANOMALY = "anomaly"  # market anomalies (涨停潮, 大单, 异动)
 
 
 class MarketScope(str, Enum):
