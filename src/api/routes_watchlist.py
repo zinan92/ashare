@@ -106,13 +106,36 @@ async def add_to_watchlist(
     from src.services.kline_updater import KlineUpdater
 
     try:
-        # 检查股票是否存在
+        # 检查股票是否存在于元数据表
         symbol = db.query(SymbolMetadata).filter(
             SymbolMetadata.ticker == request.ticker
         ).first()
 
         if not symbol:
-            raise HTTPException(status_code=404, detail="股票不存在")
+            # 从全量 stock_basic 表查找
+            import sqlite3
+            from src.config import get_settings
+            db_url = get_settings().database_url
+            db_path = db_url.replace("sqlite:///", "")
+            conn = sqlite3.connect(db_path)
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT symbol, name, industry, market FROM stock_basic WHERE symbol = ?",
+                (request.ticker,)
+            ).fetchone()
+            conn.close()
+
+            if not row:
+                raise HTTPException(status_code=404, detail="股票不存在")
+
+            # 自动创建 SymbolMetadata 记录
+            symbol = SymbolMetadata(
+                ticker=row["symbol"],
+                name=row["name"],
+                industry_lv1=row["industry"] or None,
+            )
+            db.add(symbol)
+            db.flush()
 
         # 检查是否已经在自选中
         existing = db.query(Watchlist).filter(

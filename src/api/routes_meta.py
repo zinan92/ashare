@@ -15,19 +15,65 @@ def list_symbols(service: MarketDataService = Depends(get_data_service)) -> List
 
 
 @router.get("/search")
-def search_symbols(q: str) -> List[SymbolMeta]:
-    """搜索股票（支持ticker或名称）"""
+def search_symbols(q: str):
+    """搜索全部A股股票（5000+只），标注是否已在自选中"""
     from src.database import session_scope
-    from src.models import SymbolMetadata
+    from src.models import SymbolMetadata, Watchlist
+    import sqlite3
 
     with session_scope() as session:
-        # 搜索ticker或名称包含查询字符串的股票
-        symbols = session.query(SymbolMetadata).filter(
-            (SymbolMetadata.ticker.like(f"%{q}%")) |
-            (SymbolMetadata.name.like(f"%{q}%"))
-        ).limit(20).all()
+        # 先搜自选股（有完整元数据）
+        watchlist_tickers = {
+            w.ticker for w in session.query(Watchlist).all()
+        }
 
-        return [SymbolMeta.model_validate(s) for s in symbols]
+        # 搜全量 stock_basic 表（raw SQL，因为没有 ORM model）
+        from src.config import get_settings
+        db_url = get_settings().database_url
+        db_path = db_url.replace("sqlite:///", "")
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute(
+            """SELECT symbol, name, industry, market
+               FROM stock_basic
+               WHERE symbol LIKE ? OR name LIKE ?
+               ORDER BY CASE WHEN symbol = ? THEN 0
+                             WHEN symbol LIKE ? THEN 1
+                             ELSE 2 END,
+                        symbol
+               LIMIT 30""",
+            (f"%{q}%", f"%{q}%", q, f"{q}%")
+        )
+        rows = c.fetchall()
+        conn.close()
+
+        # 对已在自选中的股票，补充完整元数据
+        result_tickers = [r["symbol"] for r in rows]
+        meta_map = {}
+        if result_tickers:
+            metas = session.query(SymbolMetadata).filter(
+                SymbolMetadata.ticker.in_(result_tickers)
+            ).all()
+            meta_map = {m.ticker: m for m in metas}
+
+        results = []
+        for row in rows:
+            ticker = row["symbol"]
+            in_watchlist = ticker in watchlist_tickers
+            meta = meta_map.get(ticker)
+
+            results.append({
+                "ticker": ticker,
+                "name": row["name"],
+                "industry": row["industry"] or "",
+                "market": row["market"] or "",
+                "inWatchlist": in_watchlist,
+                "totalMv": meta.total_mv if meta else None,
+                "peTtm": meta.pe_ttm if meta else None,
+            })
+
+        return results
 
 
 @router.get("/industries")

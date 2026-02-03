@@ -862,10 +862,49 @@ body {
 }
 
 .search-bar__item-mv,
-.search-bar__item-pe {
+.search-bar__item-pe,
+.search-bar__item-industry {
   font-size: 0.75rem;
   color: #8f9bbd;
   white-space: nowrap;
+}
+
+.search-bar__item-tag {
+  font-size: 0.7rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.search-bar__item-tag--watched {
+  color: #4ecb71;
+  background: rgba(78, 203, 113, 0.12);
+}
+
+.search-bar__add-btn {
+  font-size: 0.7rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  border: 1px solid rgba(95, 176, 255, 0.4);
+  background: rgba(95, 176, 255, 0.1);
+  color: #5fb0ff;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.search-bar__add-btn:hover {
+  background: rgba(95, 176, 255, 0.25);
+  border-color: rgba(95, 176, 255, 0.6);
+}
+
+.search-bar__add-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.search-bar__item--not-watched {
+  opacity: 0.85;
 }
 
 /* Stock Detail Styles */
