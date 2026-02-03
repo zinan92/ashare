@@ -504,10 +504,8 @@ class KlineUpdater:
 
     async def update_stock_daily(self) -> int:
         """
-        更新自选股日线数据 (东方财富)
+        更新自选股日线数据 (TuShare)
         """
-        from src.services.eastmoney_kline_provider import EastMoneyKlineProvider
-
         logger.info("开始更新自选股日线数据...")
         total_updated = 0
 
@@ -517,28 +515,28 @@ class KlineUpdater:
             return 0
 
         logger.info(f"共 {len(tickers)} 只自选股需要更新")
-        provider = EastMoneyKlineProvider(delay=0.1)
         kline_service = KlineService(self.kline_repo, self.symbol_repo)
 
         try:
             for ticker in tickers:
                 try:
-                    df = provider.fetch_kline(ticker, period="day", limit=120)
+                    ts_code = self.tushare_client.normalize_ts_code(ticker)
+                    df = self.tushare_client.fetch_daily(ts_code=ts_code)
                     if df is None or df.empty:
                         logger.debug(f"{ticker} 无日线数据")
                         continue
 
                     # 转换为klines格式
                     klines = []
-                    for _, row in df.iterrows():
+                    for _, row in df.head(120).iterrows():
                         klines.append({
-                            "datetime": row["timestamp"].strftime("%Y-%m-%d"),
+                            "datetime": row["trade_date"],
                             "open": row["open"],
                             "high": row["high"],
                             "low": row["low"],
                             "close": row["close"],
-                            "volume": row["volume"],
-                            "amount": 0,
+                            "volume": row["vol"],
+                            "amount": row.get("amount", 0),
                         })
 
                     # 保存到数据库
@@ -638,20 +636,17 @@ class KlineUpdater:
 
     async def update_all_stock_daily(self) -> int:
         """
-        更新全市场股票日线数据 (东方财富)
+        更新全市场股票日线数据 (TuShare)
 
         每只股票只获取最近20条日线，用于每日增量更新
         预计耗时: 5450只 × 0.1秒 ≈ 9分钟
         """
-        from src.services.eastmoney_kline_provider import EastMoneyKlineProvider
-
         logger.info("=" * 50)
         logger.info("开始更新全市场股票日线数据...")
         logger.info("=" * 50)
         total_updated = 0
         success_count = 0
         fail_count = 0
-        provider = EastMoneyKlineProvider(delay=0.1)
         kline_service = KlineService(self.kline_repo, self.symbol_repo)
 
         try:
@@ -667,22 +662,23 @@ class KlineUpdater:
             for i, ticker in enumerate(tickers):
                 try:
                     # 只获取最近20条日线用于增量更新
-                    df = provider.fetch_kline(ticker, period="day", limit=20)
+                    ts_code = self.tushare_client.normalize_ts_code(ticker)
+                    df = self.tushare_client.fetch_daily(ts_code=ts_code)
                     if df is None or df.empty:
                         fail_count += 1
                         continue
 
                     # 转换为klines格式
                     klines = []
-                    for _, row in df.iterrows():
+                    for _, row in df.head(20).iterrows():
                         klines.append({
-                            "datetime": row["timestamp"].strftime("%Y-%m-%d"),
+                            "datetime": row["trade_date"],
                             "open": row["open"],
                             "high": row["high"],
                             "low": row["low"],
                             "close": row["close"],
-                            "volume": row["volume"],
-                            "amount": 0,
+                            "volume": row["vol"],
+                            "amount": row.get("amount", 0),
                         })
 
                     # 保存到数据库
@@ -744,16 +740,15 @@ class KlineUpdater:
         Returns:
             {"daily": 条数, "mins30": 条数}
         """
-        from src.services.eastmoney_kline_provider import EastMoneyKlineProvider
         from src.services.sina_kline_provider import SinaKlineProvider
 
         result = {"daily": 0, "mins30": 0}
         logger.info(f"开始更新单股 {ticker} 的K线数据...")
 
-        # 1. 更新日线 (东方财富)
+        # 1. 更新日线 (TuShare)
         try:
-            eastmoney = EastMoneyKlineProvider()
-            daily_df = eastmoney.fetch_kline(ticker, period="day", limit=120)
+            ts_code = self.tushare_client.normalize_ts_code(ticker)
+            daily_df = self.tushare_client.fetch_daily(ts_code=ts_code)
 
             if daily_df is not None and not daily_df.empty:
                 # 转换DataFrame为KlineService期望的格式 (timestamp -> datetime)

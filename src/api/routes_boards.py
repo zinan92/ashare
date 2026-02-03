@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import func
 
 from src.api.dependencies import get_data_service
-from src.services.board_mapping_service import BoardMappingService
+from src.services.board_service import BoardService as BoardMappingService
 from src.services.data_pipeline import MarketDataService
 from src.database import session_scope
 from src.models import IndustryDaily, SymbolMetadata, BoardMapping, SuperCategoryDaily
