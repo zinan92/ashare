@@ -164,29 +164,15 @@ def _fetch_and_save_klines(
 
     try:
         if timeframe == "day":
-<<<<<<< HEAD
             # 日线用 Tushare Pro
             from src.services.tushare_data_provider import TushareDataProvider
             from src.models import Timeframe as TF
             provider = TushareDataProvider()
             ts_df = provider.fetch_candles(ticker, TF.DAY, limit)
-            # TushareDataProvider returns timestamp,open,high,low,close,volume,turnover
             if ts_df is not None and not ts_df.empty:
                 df = ts_df.rename(columns={"timestamp": "timestamp"})
             else:
                 df = None
-=======
-            # 日线用TuShare
-            settings = get_settings()
-            client = TushareClient(
-                token=settings.tushare_token,
-                points=settings.tushare_points,
-                delay=settings.tushare_delay,
-                max_retries=settings.tushare_max_retries,
-            )
-            ts_code = client.normalize_ts_code(ticker)
-            df = client.fetch_daily(ts_code=ts_code)
->>>>>>> ccf1351 (refactor: Perception Layer Phase 0+1 — cleanup + core interfaces (#40 #41))
         else:
             # 30分钟用新浪
             provider = SinaKlineProvider(delay=0.1)
