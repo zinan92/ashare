@@ -2,11 +2,12 @@
 
 from src.perception.sources.base import DataSource, SourceType
 from src.perception.sources.registry import SourceRegistry
-from src.perception.sources.sina_source import SinaSource
+from src.perception.sources.tushare_source import TuShareSource, TuShareSourceConfig
 
 __all__ = [
     "DataSource",
     "SourceType",
     "SourceRegistry",
-    "SinaSource",
+    "TuShareSource",
+    "TuShareSourceConfig",
 ]
