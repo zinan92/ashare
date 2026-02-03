@@ -1,284 +1,198 @@
 #!/usr/bin/env python3
 """
-市场简报生成器 v2
-整合A股指数、异动、快讯、Crypto数据生成统一简报
+市场简报生成器 v3 — 供 Wendy 盘中/盘后简报使用
+输出格式化文本，直接推送给Park
+
+数据源:
+- Sina: A股指数实时行情
+- AKShare: 涨停池/跌停池/异动数据
+- Sina News: 财经快讯
+- Local API: 自选股列表 + 实时价格
 """
 import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-import json
+import time
 import requests
 from datetime import datetime
-from typing import Dict, Any, List, Optional
 
-BASE_URL = "http://127.0.0.1:8000"
+SINA_HEADERS = {'Referer': 'https://finance.sina.com.cn', 'User-Agent': 'Mozilla/5.0'}
+API_BASE = 'http://127.0.0.1:8000'
 
 
-def api_get(path: str, params: Optional[Dict] = None, timeout: int = 10) -> Any:
-    """Call ashare API with error handling"""
+def get_indices():
+    """获取A股主要指数实时数据"""
     try:
-        resp = requests.get(f"{BASE_URL}{path}", params=params, timeout=timeout)
-        resp.raise_for_status()
-        return resp.json()
+        r = requests.get(
+            'http://hq.sinajs.cn/list=s_sh000001,s_sz399001,s_sz399006,s_sh000688',
+            headers=SINA_HEADERS, timeout=5
+        )
+        indices = {}
+        for line in r.text.strip().split('\n'):
+            if '"' in line:
+                parts = line.split('"')[1].split(',')
+                if len(parts) >= 5:
+                    indices[parts[0]] = {
+                        'price': parts[1],
+                        'change': parts[2],
+                        'pct': float(parts[3]),
+                        'vol': float(parts[4]) / 1e4  # 亿
+                    }
+        return indices
     except Exception as e:
-        print(f"  ⚠ API调用失败 {path}: {e}", file=sys.stderr)
-        return None
-
-
-def get_index_data() -> Dict[str, Any]:
-    """获取A股主要指数 via ashare API"""
-    indices = {}
-    index_map = {
-        '000001.SH': '上证指数',
-        '399001.SZ': '深证成指',
-        '399006.SZ': '创业板指',
-    }
-    for ts_code, name in index_map.items():
-        data = api_get(f"/api/index/realtime/{ts_code}")
-        if data and 'price' in data:
-            indices[name] = {
-                'price': data['price'],
-                'change': data.get('change', 0),
-                'change_pct': data.get('change_pct', 0),
-            }
-    return indices
-
-
-def get_news_summary() -> List[Dict[str, Any]]:
-    """获取快讯摘要 via ashare API"""
-    data = api_get("/api/news/latest", params={"limit": 10})
-    if not data or 'news' not in data:
-        return []
-    return [
-        {
-            'source': n.get('source_name', ''),
-            'title': (n.get('title', '') or '')[:60],
-            'time': n.get('time', ''),
-        }
-        for n in data['news']
-    ]
-
-
-def get_alerts_summary() -> Dict[str, Any]:
-    """获取异动摘要 via ashare API"""
-    data = api_get("/api/news/market-alerts")
-    if not data:
+        print(f"⚠️ 指数获取失败: {e}", file=sys.stderr)
         return {}
-    
-    result = {}
-    for alert_type, info in data.items():
-        if isinstance(info, dict) and 'count' in info:
-            result[alert_type] = {
-                'count': info['count'],
-                'top': [
-                    f"{a.get('code', '')} {a.get('name', '')}"
-                    for a in info.get('top', [])[:3]
-                ]
-            }
-    return result
 
 
-def get_crypto_data() -> Dict[str, Any]:
-    """获取加密货币数据"""
-    crypto = {}
-    
-    # 主要币种价格
-    prices_data = api_get("/api/crypto/prices")
-    if prices_data and 'prices' in prices_data:
-        crypto['prices'] = prices_data['prices'][:8]  # Top 8
-    
-    # 市场概览
-    overview = api_get("/api/crypto/market-overview")
-    if overview:
-        crypto['overview'] = overview
-    
-    # 资金费率
-    funding = api_get("/api/crypto/funding-rates")
-    if funding and 'funding_rates' in funding:
-        crypto['funding_rates'] = funding['funding_rates']
-    
-    return crypto
+def get_limit_stats():
+    """获取涨停/跌停统计 + 大笔买卖"""
+    import akshare as ak
+    today = datetime.now().strftime('%Y%m%d')
+    stats = {'limit_up': 0, 'limit_down': 0, 'up_names': [], 'down_names': [],
+             'big_buy': 0, 'big_sell': 0}
+
+    try:
+        df = ak.stock_zt_pool_em(date=today)
+        stats['limit_up'] = len(df)
+        if len(df) > 0:
+            stats['up_names'] = df['名称'].head(5).tolist()
+    except:
+        pass
+
+    try:
+        df2 = ak.stock_zt_pool_dtgc_em(date=today)
+        stats['limit_down'] = len(df2)
+        if len(df2) > 0:
+            stats['down_names'] = df2['名称'].head(5).tolist()
+    except:
+        pass
+
+    try:
+        df3 = ak.stock_changes_em(symbol="大笔买入")
+        stats['big_buy'] = len(df3)
+    except:
+        pass
+
+    try:
+        df4 = ak.stock_changes_em(symbol="大笔卖出")
+        stats['big_sell'] = len(df4)
+    except:
+        pass
+
+    return stats
 
 
-def get_us_stock_data() -> Dict[str, Any]:
-    """获取美股数据"""
-    us = {}
-    
-    indexes = api_get("/api/us-stock/indexes")
-    if indexes:
-        us['indexes'] = indexes
-    
-    china_adr = api_get("/api/us-stock/china-adr")
-    if china_adr:
-        us['china_adr'] = china_adr
-    
-    return us
+def get_watchlist_movers():
+    """获取自选股涨跌幅排名"""
+    try:
+        r = requests.get(f'{API_BASE}/api/watchlist', timeout=10)
+        if r.status_code != 200:
+            return [], []
+        watchlist = r.json()
+        tickers = [w['ticker'] for w in watchlist]
+        name_map = {w['ticker']: w['name'] for w in watchlist}
+
+        results = []
+        for i in range(0, len(tickers), 50):
+            batch = tickers[i:i + 50]
+            codes = ','.join([f"sh{t}" if t.startswith('6') else f"sz{t}" for t in batch])
+            pr = requests.get(
+                f'http://hq.sinajs.cn/list={codes}',
+                headers=SINA_HEADERS, timeout=10
+            )
+            for line in pr.text.strip().split('\n'):
+                if 'hq_str_' in line and '"' in line:
+                    code_part = line.split('hq_str_')[1].split('=')[0]
+                    ticker = code_part[2:]
+                    data = line.split('"')[1].split(',')
+                    if len(data) > 4 and data[3] and data[2]:
+                        try:
+                            cur = float(data[3])
+                            prev = float(data[2])
+                            if prev > 0:
+                                pct = (cur - prev) / prev * 100
+                                results.append((name_map.get(ticker, ticker), ticker, pct))
+                        except:
+                            pass
+            time.sleep(0.2)
+
+        results.sort(key=lambda x: x[2], reverse=True)
+        top5 = results[:5]
+        bot5 = results[-5:] if len(results) >= 5 else results[::-1][:5]
+        return top5, bot5
+    except Exception as e:
+        print(f"⚠️ 自选股获取失败: {e}", file=sys.stderr)
+        return [], []
 
 
-def format_change(pct: float) -> str:
-    """Format change percentage with emoji"""
-    emoji = '🔴' if pct < 0 else '🟢' if pct > 0 else '⚪'
-    return f"{emoji} {pct:+.2f}%"
+def get_news():
+    """获取财经快讯 (Sina Feed)"""
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0', 'Referer': 'https://finance.sina.com.cn'}
+        r = requests.get(
+            'https://feed.mix.sina.com.cn/api/roll/get?pageid=153&lid=2516&k=&num=8&page=1',
+            headers=headers, timeout=8
+        )
+        if r.status_code == 200:
+            data = r.json()
+            items = data.get('result', {}).get('data', [])
+            return [item.get('title', '')[:70] for item in items[:6] if item.get('title', '')]
+    except:
+        pass
+    return []
 
 
-def format_briefing(
-    indices: Dict,
-    news: List,
-    alerts: Dict,
-    crypto: Dict,
-    us_stocks: Dict,
-    include_crypto: bool = True,
-    include_us: bool = False,
-) -> str:
-    """格式化简报"""
-    now = datetime.now().strftime('%Y-%m-%d %H:%M')
-    lines = [f"📊 **市场简报** ({now})", ""]
-    
-    # === A股指数 ===
-    if indices:
-        lines.append("**📈 A股指数**")
-        for name, data in indices.items():
-            price = data.get('price', 0)
-            pct = data.get('change_pct', 0)
-            emoji = '🔴' if pct < 0 else '🟢' if pct > 0 else '⚪'
-            lines.append(f"{emoji} {name}: {price:.2f} ({pct:+.2f}%)")
+def format_briefing(time_label=""):
+    """生成完整简报"""
+    now = datetime.now()
+    if not time_label:
+        time_label = now.strftime('%H:%M')
+
+    lines = [f"📊 市场简报 ({time_label})", ""]
+
+    # 1. 指数
+    indices = get_indices()
+    lines.append("📈 A股指数")
+    for name in ['上证指数', '深证成指', '创业板指', '科创50']:
+        if name in indices:
+            d = indices[name]
+            e = '🟢' if d['pct'] >= 0 else '🔴'
+            sign = '+' if d['pct'] >= 0 else ''
+            lines.append(
+                f"  {e} {name}: {d['price']} ({sign}{d['pct']:.2f}%) 成交:{d['vol']:.0f}亿")
+
+    # 2. 涨跌停统计
+    stats = get_limit_stats()
+    lines.append("")
+    lines.append("⚡ 异动统计")
+    up_str = '、'.join(stats['up_names'][:3]) + '…' if stats['up_names'] else ''
+    down_str = '、'.join(stats['down_names'][:3]) + '…' if stats['down_names'] else ''
+    lines.append(f"  🟢 涨停: {stats['limit_up']}只 | {up_str}")
+    lines.append(f"  🔴 跌停: {stats['limit_down']}只 | {down_str}")
+    net = stats['big_buy'] - stats['big_sell']
+    lines.append(
+        f"  💰 大笔买入: {stats['big_buy']}只 | 🔻 大笔卖出: {stats['big_sell']}只"
+        f"（净{'买' if net >= 0 else '卖'}入{abs(net)}只差额）")
+
+    # 3. 自选股异动
+    top5, bot5 = get_watchlist_movers()
+    if top5:
         lines.append("")
-    
-    # === 异动 ===
-    if alerts:
-        lines.append("**⚡ 异动提醒**")
-        for alert_type, data in alerts.items():
-            count = data.get('count', 0)
-            if count > 0:
-                top = ', '.join(data.get('top', []))
-                lines.append(f"• {alert_type}: {count}只 ({top})")
-        lines.append("")
-    
-    # === Crypto ===
-    if include_crypto and crypto:
-        prices = crypto.get('prices', [])
-        overview = crypto.get('overview', {})
-        funding = crypto.get('funding_rates', [])
-        
-        if prices:
-            lines.append("**₿ 加密货币**")
-            for coin in prices[:6]:
-                sym = coin.get('symbol', '')
-                price = coin.get('price', 0)
-                chg = coin.get('change_24h', 0)
-                emoji = '🔴' if chg < 0 else '🟢'
-                
-                # Format price nicely
-                if price >= 1000:
-                    price_str = f"${price:,.0f}"
-                elif price >= 1:
-                    price_str = f"${price:.2f}"
-                else:
-                    price_str = f"${price:.4f}"
-                
-                lines.append(f"{emoji} {sym}: {price_str} ({chg:+.1f}%)")
-            
-            if overview:
-                total_cap = overview.get('total_market_cap_usd', 0)
-                btc_dom = overview.get('bitcoin_dominance', 0)
-                cap_chg = overview.get('market_cap_change_24h', 0)
-                lines.append(f"💰 总市值: ${total_cap/1e12:.2f}T ({cap_chg:+.1f}%) | BTC主导率: {btc_dom:.1f}%")
-            
-            # Funding rates - highlight extreme values
-            extreme_funding = [
-                f for f in funding
-                if f.get('funding_rate', 0) and abs(f['funding_rate']) > 0.005
-            ]
-            if extreme_funding:
-                lines.append("📊 资金费率异常:")
-                for f in extreme_funding:
-                    rate = f['funding_rate']
-                    sym = f['symbol']
-                    direction = "空头付费" if rate > 0 else "多头付费"
-                    lines.append(f"  • {sym}: {rate*100:.3f}% ({direction})")
-            
-            lines.append("")
-    
-    # === 美股 ===
-    if include_us and us_stocks:
-        indexes = us_stocks.get('indexes', {})
-        adr = us_stocks.get('china_adr', {})
-        
-        if indexes:
-            lines.append("**🇺🇸 美股**")
-            for idx_name, idx_data in indexes.items():
-                if isinstance(idx_data, dict):
-                    price = idx_data.get('price', 0)
-                    pct = idx_data.get('change_pct', 0)
-                    emoji = '🔴' if pct < 0 else '🟢'
-                    lines.append(f"{emoji} {idx_name}: {price:,.2f} ({pct:+.2f}%)")
-        
-        if adr:
-            lines.append("**🇨🇳 中概股**")
-            adr_list = adr if isinstance(adr, list) else adr.get('stocks', [])
-            for stock in (adr_list[:5] if isinstance(adr_list, list) else []):
-                name = stock.get('name', '')
-                price = stock.get('price', 0)
-                pct = stock.get('change_pct', 0)
-                emoji = '🔴' if pct < 0 else '🟢'
-                lines.append(f"{emoji} {name}: ${price:.2f} ({pct:+.2f}%)")
-        
-        lines.append("")
-    
-    # === 快讯 ===
+        lines.append("⭐ 自选股异动")
+        top_str = ' | '.join([f"{n}{p:+.1f}%" for n, _, p in top5])
+        bot_str = ' | '.join([f"{n}{p:+.1f}%" for n, _, p in bot5])
+        lines.append(f"  📈 涨幅前5: {top_str}")
+        lines.append(f"  📉 跌幅前5: {bot_str}")
+
+    # 4. 快讯
+    news = get_news()
     if news:
-        lines.append("**📰 最新快讯**")
-        for n in news[:5]:
-            source = n.get('source', '')
-            title = n.get('title', '')
-            lines.append(f"• [{source}] {title}")
-    
+        lines.append("")
+        lines.append("📰 财经快讯")
+        for title in news[:5]:
+            lines.append(f"  • {title}")
+
     return '\n'.join(lines)
 
 
-def main():
-    """生成并输出市场简报"""
-    print("正在生成市场简报...\n")
-    
-    now = datetime.now()
-    hour = now.hour
-    is_trading_hours = 9 <= hour < 16
-    is_after_hours = hour >= 16 or hour < 9
-    
-    # 获取数据
-    indices = get_index_data()
-    news = get_news_summary()
-    alerts = get_alerts_summary()
-    crypto = get_crypto_data()
-    us_stocks = get_us_stock_data() if is_after_hours else {}
-    
-    # 格式化
-    briefing = format_briefing(
-        indices=indices,
-        news=news,
-        alerts=alerts,
-        crypto=crypto,
-        us_stocks=us_stocks,
-        include_crypto=True,
-        include_us=is_after_hours,
-    )
-    
-    print(briefing)
-    
-    # JSON output
-    print("\n--- JSON ---")
-    print(json.dumps({
-        'timestamp': now.isoformat(),
-        'indices': indices,
-        'news_count': len(news),
-        'alerts': alerts,
-        'crypto': {
-            'prices_count': len(crypto.get('prices', [])),
-            'overview': crypto.get('overview', {}),
-        },
-    }, ensure_ascii=False, indent=2))
-
-
 if __name__ == '__main__':
-    main()
+    label = sys.argv[1] if len(sys.argv) > 1 else ""
+    print(format_briefing(label))
