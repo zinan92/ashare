@@ -19,6 +19,8 @@ class EventSource(str, Enum):
 
     TUSHARE = "tushare"
     SINA = "sina"
+    AKSHARE = "akshare"
+    YAHOO = "yahoo"  # Yahoo Finance (US stocks, ADRs, crypto, global indices)
     CLS = "cls"  # 财联社
     THS = "ths"  # 同花顺
     EXCHANGE = "exchange"
