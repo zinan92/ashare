@@ -197,10 +197,13 @@ class TestShrinkage:
 class TestVolumeTrend:
     def test_progressive_expansion(self):
         """Each bar's volume > 130% of prior → expansion trend."""
-        closes = [10.0] * 10
-        # Each volume > 1.3x prior
-        volumes = [1_000_000, 1_300_000, 1_690_000, 2_197_000, 2_856_100,
-                    3_712_930, 4_826_809, 6_274_851, 8_157_307, 10_604_499]
+        # Need avg_period+1 bars for surge/shrinkage checks, plus trend_lookback+1
+        # Use 25 bars: 19 filler + 6 progressive expansion bars
+        closes = [10.0] * 25
+        filler_vols = [1_000_000] * 19
+        # Last 6 bars: each > 1.3x prior
+        expanding = [1_000_000, 1_400_000, 1_960_000, 2_744_000, 3_841_600, 5_378_240]
+        volumes = filler_vols + expanding
         bars = _make_bars(closes, volumes)
         event = _make_event(bars)
 
